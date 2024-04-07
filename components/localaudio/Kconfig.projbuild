@@ -1,0 +1,19 @@
+
+menu "Local Audio Configuration"
+
+  config AUDIOOUT_DEFAULT_0DB
+    hex "default multiplicator for 0dB out"
+    range   0x00100 0x80000
+    default 0x10000
+    help
+      "default multiplicator for 0dB audio output (volume)"
+
+  config AUDIOIN_DEFAULT_0DB
+    hex "default multiplicator for 0dB in"
+    range   0x00080 0x10000
+    default 0x00800
+    help
+      "default multiplicator for 0dB audio input (mic gain)"
+
+    
+endmenu

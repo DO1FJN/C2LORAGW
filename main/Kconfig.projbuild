@@ -1,0 +1,122 @@
+
+menu "Target and Board Configuration"
+
+    choice C2LORAGW_TARGET
+      prompt "Target / Board"
+      default TARGET_BREADBOARD
+      help
+        Set the board target.
+  
+      config TARGET_BREADBOARD
+        bool "Breadboard"
+  
+      config TARGET_C2LOARAGW_V1
+        bool "C2 Lora Gateway HW 1"
+  
+      config TARGET_LILYGO_TDECK
+        bool "LILYGO T-Deck"
+    
+    endchoice
+
+    config BOOT_FAIL_LED
+      int "Boot Fail LED indicator IO pin"
+      depends on TARGET_C2LOARAGW_V1 || TARGET_BREADBOARD
+      range -1 47
+      default 0
+      help
+        Shows a blink pattern on this IO pin, if somethin goes wrong during startup.
+
+    config LOCALAUDIO_ENABLED
+      bool "Local audio"
+      default true
+      help 
+        Enables microphone and speaker capabilities using I2S.
+
+    config LOCAL_PTT_ENABLED
+      bool "Local PTT key"
+      depends on LOCALAUDIO_ENABLED
+      default true
+      help
+        Allows to talk by holing the PTT key down.
+
+    config LOCAL_PTT_IOPIN
+      int "PTT IO pin number"
+      depends on LOCAL_PTT_ENABLED
+      range 0 47
+      default 0
+      help
+        Select the IO pin for a push button wired to GND.
+
+    config LOW_FREQUENCY_RANGE_MHZ
+      int "Lowest frequency allowed (in MHz)"
+      range   410 490
+      default 430
+      help
+        Lowest frequency C2LORA will transmit.
+
+    config HIGH_FREQUENCY_RANGE_MHZ
+      int "Highest frequency allowed (in MHz)"
+      range   410 490
+      default 440
+      help
+        Highest frequency C2LORA will transmit.
+    
+endmenu
+
+menu "Feature Configuration"
+
+  config DEFAULT_FREQUENCY_HZ
+    int "Default frequency (in Hz)"
+    range   430000000 440000000
+    default 433075000
+    help
+      Default frequency the tranceiver is set to, if no NVM data is set.
+
+  config DEFAULT_C2LORA_MODE
+    int "Default C2LORA mode"
+    range 0 9
+    default 4
+    help
+      Default C2LORA mode, if no NVM parameter is set (default 4 = 15KHz, 1600bit/s).
+
+
+  config DEFAULT_CALLSIGN
+    string "Default callsign if noting else is configured"
+    help
+      Enter a useful callsign...
+
+  choice DEFAULT_KOS
+    prompt "Kind Of Station"
+    default KOS_HOTSPOT
+    config KOS_PORTABLE
+      bool "Portable Radio"
+    config KOS_MOBILE
+      bool "Mobile Radio"  
+    config KOS_STATION
+      bool "Station/Indoor"
+    config KOS_HOTSPOT
+      bool "Hotspot"  
+    config KOS_RELAY
+      bool "Relay (Full Duplex, 2 Modules)"
+  endchoice
+
+  config USE_TEST_BITPATTERN
+    bool "Use Testpatterns on TX"
+    default n
+    help
+      Use 01 01 01 01 02 02 02 02 test data instead of real speech frames and shows received.
+      data as hex buffers (no audio output).
+
+  config PLAIN_PASSWORDS
+    bool "Show Wifi passwords withing configuration files"
+    default n
+    help
+      Enabling this shows stored passwords in configuration files written to an USB stick.
+
+  config PARSE_INI_DEBUG
+    bool "Debug print INI lines while parsing"
+    default n
+    help
+      Enabling this shows stored now the configuration is parsed.
+
+endmenu

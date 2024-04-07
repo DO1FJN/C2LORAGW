@@ -1,0 +1,7 @@
+nvs,      data, nvs,     0x009000, 0x6000,
+phy_init, data, phy,     0x00f000, 0x1000,
+factory,  app,  factory, 0x010000, 1536K,
+ota_0,    app,  ota_0,   0x190000, 1536K,
+ota_1,    app,  ota_1,   0x310000, 1536K,
+otadata,  data, ota,     0x490000, 0x2000,
+storage,  data, spiffs,  0x492000, 11704K

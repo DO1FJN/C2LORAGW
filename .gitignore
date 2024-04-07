@@ -1,0 +1,10 @@
+build/
+.cache/
+.vscode/
+*.norepo
+*-backups/
+Pick_n_place/
+sdkconfig
+*.old
+fp-info-cache
+rules.kicad_pro

@@ -1,0 +1,24 @@
+menu "HAMdLNK - HAM-d-Link Config"
+  config HAMDLNK_PORT_MAIN
+    int "IP port number (incoming+outgoing UDP)"
+    range 1 65535
+    default 30003
+    help
+      "Listen on this port for incoming HAMdLNK streams, forwarding on UHF is not in dongle mode"
+
+  config HAMDLNK_PORT_2ND
+    int "2nd port (incoming+outgoing UDP)"
+    range 1 65535
+    default 30004
+    help
+      "If not in dongle mode, streaming to this port for local audio out"
+
+  config MAX_USERDATA
+    int "Maximum Userdata (Incoming UDP)"
+    range 2 16
+    default 4
+    help
+       "Defines how many incomping UDP-RTP stream can be handled in parallel (UNUSED!)"
+
+
+endmenu
