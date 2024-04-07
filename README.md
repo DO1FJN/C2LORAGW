@@ -9,7 +9,7 @@ To transport speech data using low bandwidth / bitrates C2LoRaGW uses only Codec
 
 The datastream used in the internet / ham-net derives from a 2012 project 'HAMdLNK' and uses the same format like my D-Star
 proof-of-concept software from this time. A demo software 'DV-RPTR-App' was already developed and is still in use (now with
-localaudio using pipwire) to test the UDP link.
+localaudio using pipewire) to test the UDP link.
 
 On UHF side I defined 10 modes using the lower bandwidth modulations of the LoRa IC: 10,15,20 and 31kHz to transmit with 100%
 duty on a frequency within 70cm ham-radio band (430-440MHz in Germany). C2LoRaGW acts as a hotspot transmitting and receiving on
@@ -18,13 +18,17 @@ the same frequency half-duplex. There is an option to add a 2nd transceiver to i
 Because the fact that not ready-to-use LoRa based radios exist, this project contains also audio in- and output using cheap I2S
 modules plus display an simple UI on a TFT or OLED display.
 
+Project description [here](documentation/project_description.md)
+
 ### Hardware
 
 A ready to use 80x50mm PCB *"C2LORAGW"* containing an E22-400M30S (or M33S) and a ESP32-S3 module is available. All spare IO's are
 routed to a 2.54mm pin header for adding extensions. This board can be powered by an USB 2A charger or an LiPo / LiIon 1S battery.
 To simplify the design this board doesn't contain a charger or power switch (can be added on a separate board).
 
-This PCB is sized to fit into an Hammond or Fisher aluminium case, but also have 4 mounting holes (M3).
+This PCB is sized to fit into an Hammond or Fisher aluminum case, but also have 4 mounting holes (M3).
+
+Detailed hardware description [here](documentation/hardware.md)
 
 ### Firmware
 

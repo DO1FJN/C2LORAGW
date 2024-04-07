@@ -18,7 +18,7 @@ to uses UDP-RTP and pack some more information into it beside the speech data li
 ## What Is The 'Gateway'
 
 C2 LoRa Gateway - the name of this project - describes the main function: A C2LoRa reception is forwarded to an IP address and
-incoming HAMdLNK packets will be assembled and transmitted. The forwarded IP addres can configured as an IPv4 broadcast or IPv6
+incoming HAMdLNK packets will be assembled and transmitted. The forwarded IP address can configured as an IPv4 broadcast or IPv6
 multicast or as a URL (DNS resolvable name). IP base communication is done using the integrated
 
 In the simplest scenario 2 devices are within the same local LAN. One uses a Gateway configuration, the other is in a 'dongle'
@@ -32,6 +32,8 @@ be framed into 480ms long packets (6 or 12 Codec2 frames). These packets are tra
 air such a packet is roughly as long as the voice (480ms) so that only minimal gaps exists and a transmission is near 100% duty.
 
 The first packet of every transmission contains a tiny header so that the first transmission is between 520-580ms long.
+
+Here is the mode overview: [C2LORA modes](C2LORA modes.md)
 
 ## Hardware Setup
 
@@ -47,3 +49,7 @@ buttons: That's really is it.
 There is "no limit". In the moment I added support for the common MAX98357A I2S audio amplifier and an INMP441 microphone. The
 BOOT key acts as a PTT. A ST7789 TFT display can be also used. I plan to put more stuff (touchscreen support) into in so that
 for example a LilyGo T-Deck can be used as a handheld radio.
+
+### Developed Hardware
+
+"C2LORAGW" description [here](hardware.md)
