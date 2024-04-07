@@ -2,6 +2,7 @@ build/
 .cache/
 .vscode/
 *.norepo
+*.lock
 *-backups/
 Pick_n_place/
 sdkconfig
