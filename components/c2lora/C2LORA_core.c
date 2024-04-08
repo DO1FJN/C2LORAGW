@@ -371,9 +371,9 @@ esp_err_t C2LORA_prepare_transmit(tLoraStream *lora, bool preamble_for_rt_speech
 
   int bytes_space  = 256 - 1 - lora->def->bytes_per_header;
   int packets_left = bytes_space / lora->def->bytes_per_packet;
-  int frame_space  = (bytes_space - (packets_left * lora->def->bytes_per_packet) - (lora->p.bits_cydata >> 3)) / lora->dva->bytes_per_frame;
-
-  ESP_LOGD(TAG, "%ubytes = %up + %uf", bytes_space, packets_left, frame_space);
+  //int frame_space  = (bytes_space - (packets_left * lora->def->bytes_per_packet) - (int)(lora->p.bits_cydata >> 3)) / lora->dva->bytes_per_frame;
+  int frame_space  = (bytes_space % lora->def->bytes_per_packet) / lora->dva->bytes_per_frame;
+  ESP_LOGD(TAG, "%dbytes = %dp + %df", bytes_space, packets_left, frame_space);
 
   lora->frame_himark = packets_left * lora->def->dv_frames_per_packet + frame_space;
 

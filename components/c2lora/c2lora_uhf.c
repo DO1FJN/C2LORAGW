@@ -815,15 +815,15 @@ void C2LORA_handle_encoded(tdvstream *dva, void *userdata) {
 
   ESP_LOGV(TAG, "%lu / %lu (+ %uf)", lora->frame_cnt, lora->frame_himark, frame_cnt);
 
-  if ((lora->frame_himark - lora->frame_cnt) < frame_cnt) {
-    frame_cnt = lora->frame_himark - lora->frame_cnt;
-    ESP_LOGW(TAG, "SX126x buffer runs full");
-  }
-
-  if (frame_cnt == 0) {    
-    ESP_LOGW(TAG, "empty encoded data"); 
+  if (frame_cnt == 0) {
+    ESP_LOGW(TAG, "no encoded data"); 
     return;
   }
+  if ((lora->frame_himark - lora->frame_cnt) < frame_cnt) {
+    ESP_LOGW(TAG, "SX126x buffer runs full at frame %lu, %u frames pending", lora->frame_cnt, frame_cnt);
+    frame_cnt = lora->frame_himark - lora->frame_cnt;
+    if (frame_cnt == 0) return;
+  } // fi not enoght space
 
   if (frame_bytes > sizeof(frame_shifted)) {
     frame_bytes = sizeof(frame_shifted);
@@ -1013,10 +1013,10 @@ static inline void c2lora_calc_no_frames_fit(tLoraStream *lora) {
   uint32_t new_highmark;
   int packets_left = 256 / lora->def->bytes_per_packet;
   int bytes_left   = 256 % lora->def->bytes_per_packet;
-  int frame_space  = (bytes_left - (lora->p.bits_cydata >> 3)) / lora->dva->bytes_per_frame;
+  int frame_space  = bytes_left / lora->dva->bytes_per_frame;
   new_highmark = packets_left * lora->def->dv_frames_per_packet + frame_space;
   if (lora->frame_himark < new_highmark) {
-    lora->frame_himark = new_highmark;  
+    lora->frame_himark = new_highmark;
   }
 }
 
@@ -1087,7 +1087,7 @@ static inline esp_err_t c2lora_transmit_funct(tLoraStream *lora) {
       if ((lora->dva != NULL) && (sbuf_get_unsend_size(lora->dva->buf) >= lora->dva->bytes_per_frame)) {
         C2LORA_handle_encoded(lora->dva, lora);      
       }
-      ESP_LOGW(TAG, "TXdone event after %luµs", done_after_start_us);
+      ESP_LOGD(TAG, "TXdone event after %luµs", done_after_start_us);
     }
 
     if (tx_bits & (C2LORA_EVENT_RECONFIGURE|C2LORA_EVENT_TERMINATE)) {
