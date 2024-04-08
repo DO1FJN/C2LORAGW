@@ -625,8 +625,8 @@ uint32_t c2lora_start_tx_microphone(tLoraStream *lora, void *arg) {
   int frame_len_ms;  
   tdvstream *new_dva;
   // ToDo cydata
-  if (lora->state >= RX_NOSYNC) {
-    ESP_LOGW(TAG, "C2LORA is in receiving mode...");
+  if (lora->state > RX_NOSYNC) {
+    ESP_LOGW(TAG, "C2LORA is receiving...");
     return ESP_ERR_INVALID_STATE; // is in use
   }
   if (lora->dva != NULL) {
@@ -1025,7 +1025,7 @@ static inline esp_err_t c2lora_transmit_funct(tLoraStream *lora) {
   esp_err_t  err;
   int64_t    start_time;
   int32_t    done_after_start_us;  
-  TickType_t wait_packet_timeout = pdMS_TO_TICKS(C2LORA_WHEADER_FRAMELEN_MS+30);  // first timeout is 4 header...
+  TickType_t wait_packet_timeout = pdMS_TO_TICKS(C2LORA_WHEADER_FRAMELEN_MS+60);  // first timeout is 4 header...
 
   uint8_t    sx126x_set_baseadr[3] = { SX126X_CMD_SET_BASEADR, 0, 0 };
   uint32_t   packet_transmitted = 0;
@@ -1481,6 +1481,7 @@ static void C2LORA_control_task(void *thread_data) {
 
   tdvstream C2LORArx;
   trtp_data UDPrtp;
+  TickType_t wait_4_cmd = portMAX_DELAY;
   
   if (lora == NULL) goto c2lora_task_shutdown;
 
@@ -1502,31 +1503,31 @@ static void C2LORA_control_task(void *thread_data) {
   do {
 
     tLoraCmdQItem q_item;
-    if (xQueueReceive(lora->cmd_queue, &q_item, portMAX_DELAY)) {
+    EventBits_t   lora_events;
+    trtp_data *   FWDrtp = NULL;
+
+    if (xQueueReceive(lora->cmd_queue, &q_item, wait_4_cmd)) {
       uint32_t ret_value;
       tLoraStream *lora4cmd = lora;
-      EventBits_t events = xEventGroupGetBits(lora->events);
+      
+      wait_4_cmd = portMAX_DELAY;
+
       ESP_LOGD(TAG, "run cmd (%d)", lora4cmd->state);
       ret_value = q_item.cmd_fct != NULL? q_item.cmd_fct(lora4cmd, q_item.cmd_arg): ESP_ERR_INVALID_ARG;
       if (lora4cmd->task_to_notify) xTaskNotify(lora4cmd->task_to_notify, ret_value, eSetValueWithOverwrite);
 
-      // reenable receiving instead IDLE
-      if ((lora->state == LS_IDLE) && (events & C2LORA_EVENT_RECEIVE_ACTI)) {
-        lora->state = RX_NOSYNC;
-      } // fi
-    
+      sx126x_lock();
       s = sx126x_clear_irq_status(lora->ctx, SX126X_IRQ_ALL);     // after clear TXdone event is active again
       if (s) {
         sx126x_clear_irq_status(lora->ctx, SX126X_IRQ_ALL);       // try again
         ESP_LOGW(TAG, "clear int status failed");
       }
+      sx126x_unlock();
 
     } // fi handle cmd
 
     if (lora->state >= RX_NOSYNC) {         // we are in RX mode 
-      // are we receiving now? yes: enter 2nd loop after a bit of preparing
-      trtp_data * FWDrtp = NULL;
-      C2LORArx.streamid = -1;
+      // are we receiving now? yes: enter 2nd loop after a bit of preparing      
       if (isSF_CODEC2(lora->def->codec_type)) {
         C2LORArx.codec_type        = lora->def->codec_type;
         C2LORArx.samples_per_frame = lora->def->dv_frames_per_packet==12? 320: 160;
@@ -1536,13 +1537,14 @@ static void C2LORA_control_task(void *thread_data) {
       } else {
         C2LORArx.codec_type        = 255;  // some other stuff - not Codec2
         ESP_LOGE(TAG, "invalid codec type defined.");
+        lora->state = LS_IDLE;
         continue;
       }
+      C2LORArx.streamid = -1;
       lora->dva = &C2LORArx;
 
       err = c2lora_receive_funct(lora, FWDrtp);
       if (err != ESP_OK) ESP_LOGE(TAG, "receive returns error: %s", esp_err_to_name(err));
-
       lora->dva = NULL;
 
     } else if (lora->state >= TX_SEND_HEADER) {    // we in TRANSMIT mode now
@@ -1551,6 +1553,13 @@ static void C2LORA_control_task(void *thread_data) {
       if (err != ESP_OK) ESP_LOGE(TAG, "transmit returns error: %s", esp_err_to_name(err));
 
     } // fi TX
+
+    lora_events = xEventGroupGetBits(lora->events);
+    // reenable receiving instead IDLE
+    if ((lora->state == LS_IDLE) && (lora_events & C2LORA_EVENT_RECEIVE_ACTI)) {
+      wait_4_cmd  = 1;
+      lora->state = RX_NOSYNC;
+    } // fi
 
     sx126x_lock();
     sx126x_clear_irq_status(lora->ctx, SX126X_IRQ_ALL);
