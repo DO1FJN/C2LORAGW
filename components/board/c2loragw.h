@@ -24,12 +24,12 @@
 #define SX126X_DIO3_Pin         GPIO_NUM_NC             // general purpos INT line - if available, not used jet
 #define SX126X_RXSWITCH_Pin     45                      // separate RX antenna switch (used in moduls with LAN + PA)
 
+#define SX126X_RX_BOOST_GAIN    0      // without boost
 #define SX126X_FREQUENCY_OFFSET 0                       // default frequencyoffet matches roughly at room temperature
+#define SX126X_ENABLE_DCDC      1                       // bool if the DCDC can be turned on (Inductor on DCC_SW pin)
 
 #define SX126X_TCXO_VOLTAGE     SX126X_TCXO_CTRL_1_8V
 #define SX126X_TCXO_STARTTIME   5       // [ms]
-
-#define SX126X_ENABLE_DCDC      1                       // bool if the DCDC can be turned on (Inductor on DCC_SW pin)
 
 #define SX126X_LNA_RSSI_SHIFT   18                      // having a additional LNA before the SX126x results in wrong RSSI readings
 #define SX126X_PA_GAIN_DB       9                       // having a PA attached the TX power-settings must be converted down by this offset

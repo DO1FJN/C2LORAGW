@@ -10,6 +10,9 @@ menu "Target and Board Configuration"
       config TARGET_BREADBOARD
         bool "Breadboard"
   
+      config TARGET_HELTEC_WIFILORA_V3
+        bool "Heltec WiFi LoRa 32 V3"
+
       config TARGET_C2LOARAGW_V1
         bool "C2 Lora Gateway HW 1"
   

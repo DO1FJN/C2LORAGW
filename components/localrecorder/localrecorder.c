@@ -18,7 +18,6 @@ main API file for accessing the C2LORA UHF link
 #include "esp_check.h"
 #include "esp_heap_caps.h"
 
-//#include "heap.h"
 
 static const char *TAG = "REC";
 
@@ -28,14 +27,18 @@ struct sRecorderHandle {
   U8                    codec_type;
 };
 
+#ifndef CONFIG_SOC_SPIRAM_SUPPORTED
+tRecorderHandle last_rec = { };
+#endif 
 
 esp_err_t create_record(tRecorderHandle **hnd, U8 codec_type, U16 frame_cnt, U16 frame_size, U16 steps_per_frame) {
-  
+  tRecorderHandle *rec;
   ESP_RETURN_ON_FALSE(hnd != NULL, ESP_ERR_INVALID_ARG, TAG, "invalid (NULL) recording handle ptr");
-  tRecorderHandle *rec = calloc(1, sizeof(struct sRecorderHandle));
+#if CONFIG_SOC_SPIRAM_SUPPORTED
+
+  rec = calloc(1, sizeof(struct sRecorderHandle));
   ESP_RETURN_ON_FALSE(rec != NULL, ESP_ERR_NO_MEM, TAG, "no memory for recoding handle");
 
-  rec->codec_type = codec_type;
   
   void * buffer = heap_caps_malloc((U32)frame_cnt * frame_size, MALLOC_CAP_SPIRAM);
 
@@ -45,7 +48,17 @@ esp_err_t create_record(tRecorderHandle **hnd, U8 codec_type, U16 frame_cnt, U16
   }
 
   sbuf_create_4ext(&rec->buf, frame_cnt, frame_size, steps_per_frame, buffer);
+#else
 
+  if (last_rec.buf.start_ptr == NULL) {
+    sbuf_create(&last_rec.buf, frame_cnt, frame_size, steps_per_frame);
+  } else {
+    sbuf_flush(&last_rec.buf);
+  }
+  rec = &last_rec;
+
+#endif  
+  rec->codec_type = codec_type;
   hnd[0] = rec;
   return ESP_OK;
 }

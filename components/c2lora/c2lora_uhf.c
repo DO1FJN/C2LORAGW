@@ -247,8 +247,10 @@ esp_err_t C2LORA_init_tranceiver(int spi_device_no, unsigned int default_frequen
   tLoraStream *lora = &lora_stream;
 
   lora->cmd_queue   = xQueueCreateStatic(C2LORA_UHF_CMD_QUEUE_SIZE, sizeof(tLoraCmdQItem), lora_queue_item_buf, &lora_queue_struct_buf);
+  // load some defaults
   lora->freq_offset = freq_offset_hz;
   lora->frequency   = default_frequency_hz;
+  lora->tx_power_dBm = -9;
 
   err = C2LORA_load_parameters();
 

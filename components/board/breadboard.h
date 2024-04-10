@@ -42,7 +42,7 @@ hardware GPIO defines for a ESP32-S3 Noname HMI Board with TFT Display mounted t
 #define AUDIO_I2S_ENABLE        17
 
 
-#define SX126X_RX_BOOT_GAIN     0       // no boost
+#define SX126X_RX_BOOST_GAIN    0       // no boost
 
 #define SX126X_HOST             SPI3_NUM
 #define SX126X_SPISPEED_MHZ     10

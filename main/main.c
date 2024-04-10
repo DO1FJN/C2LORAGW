@@ -1372,7 +1372,7 @@ void app_main(void) {
   } // ehliw dongle operation
 
 #if CONFIG_LOCAL_PTT_ENABLED
-  while (1) {    
+  while (1) {
     if (ptt_button_state(true)) {
       ESP_LOGI(TAG, "*** start transmitting ***");
       ret = C2LORA_start_tx_microphone();

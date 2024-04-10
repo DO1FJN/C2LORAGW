@@ -504,9 +504,9 @@ esp_err_t C2LORA_prepare_receive(tLoraStream *lora, uint32_t *symbol_time, uint3
   s = sx126x_set_rx_tx_fallback_mode(lora->ctx, SX126X_FALLBACK_FS);
   if (s) ESP_LOGE(TAG, "set rx/tx fallback mode");
 
-#ifdef SX126X_RX_BOOT_GAIN
+#ifdef SX126X_RX_BOOST_GAIN
   ESP_LOGD(TAG, "boost gain");
-  uint8_t gain_value = SX126X_RX_BOOT_GAIN? 0x96: 0x94;
+  uint8_t gain_value = SX126X_RX_BOOST_GAIN? 0x96: 0x94;
   s = sx126x_write_register(lora->ctx, SX126X_REG_RXGAIN, &gain_value, 1);
   if (s) ESP_LOGE(TAG, "no boosted gain");
 #endif
