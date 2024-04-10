@@ -205,8 +205,8 @@ esp_err_t C2LORA_init_sx126x(tLoraStream *lora, const tsx126x_config *cfg) {
   s = sx126x_set_rf_freq(lora->ctx, lora->frequency);  // needs ~40µs BUSY
   if (s) ESP_LOGE(TAG, "set freq");
 
-  C2LORA_set_tx_power(lora, -9);
- 
+  C2LORA_set_tx_power(lora, lora->tx_power_dBm);
+
   ESP_LOGD(TAG, "set DIO2 as RF switch control");
   s = sx126x_set_dio2_as_rf_sw_ctrl(lora->ctx, true); // ~8µs BUSY
   if (s) ESP_LOGE(TAG, "set DIO2 as RF switch control");
@@ -272,9 +272,6 @@ esp_err_t C2LORA_set_tx_power(tLoraStream *lora, signed char pwr_dBm) {
   int pa_param_sel;
 
   ESP_RETURN_ON_FALSE(lora != NULL, ESP_ERR_INVALID_ARG, TAG, "LoraStram is NULL");  
-#if (defined SX126X_PA_GAIN_DB) && (SX126X_PA_GAIN_DB > 0)
-  pwr_dBm -= SX126X_PA_GAIN_DB;
-#endif
   for (pa_param_sel = 0; pa_param_sel < 4; pa_param_sel++) {
     if (pwr_dBm <= max_dBm_sel[pa_param_sel]) break;
   } // rof
@@ -414,7 +411,6 @@ inline esp_err_t C2LORA_begin_transmit(tLoraStream *lora) {
 
 esp_err_t C2LORA_finish_transmit(tLoraStream *lora) {
   sx126x_status_t s = 0;
-  sx126x_errors_mask_t dev_errors;
   lora->state = LS_IDLE;
   lora->dva   = NULL;
   lora->finish_tx = NULL;

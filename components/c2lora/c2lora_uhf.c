@@ -70,10 +70,11 @@ typedef struct {
 static const char *TAG = "C2LORA";
 
 static const char *C2LORA_namespace = "C2LORA";
-static const char *C2LORA_Mode	    = "OPmode";
-static const char *C2LORA_Freq      = "frequency";
+static const char *C2LORA_Mode_k    = "OPmode";
+static const char *C2LORA_Freq_k    = "frequency";
 static const char *C2LORA_FreqShift = "freqshift";
-static const char *C2LORA_Offset    = "f_cal_hz";
+static const char *C2LORA_Offset_k  = "f_cal_hz";
+static const char *C2LORA_TXPOWER_k = "txPower";
 
 #define C2LORA_TIMEOUT_480            ((C2LORA_DVOICE_FRAMELEN_MS+16)*64)
 
@@ -148,17 +149,14 @@ tLoraStream *C2LORA_get_stream_4_transmit(void) {
 }
 
 
-esp_err_t C2LORA_init_donglemode(tC2LORA_mode default_mode) {
-
+/* C2LORA_load_parameters()
+ * get the permanently stored paramter for the (main) lora module.
+ */
+static esp_err_t C2LORA_load_parameters(void) {
+  esp_err_t err;
   nvs_handle hnd;
-  esp_err_t err = C2LORA_prepare_streamstruct(&lora_stream, default_mode);
-  if (err != ESP_OK) {
-    ESP_LOGE(TAG, "init tranceiver fails");
-     return err; 
-  }
-
   tLoraStream *lora = &lora_stream;
-
+   
   err = nvs_open(C2LORA_namespace, NVS_READONLY, &hnd);
   if (err != ESP_OK) {
     ESP_LOGW(TAG, "no parameter set found in NVS");    
@@ -166,35 +164,58 @@ esp_err_t C2LORA_init_donglemode(tC2LORA_mode default_mode) {
     uint8_t  mode_nvs;
     uint32_t freq_nvs;
     int32_t  freq_shift;
-    int32_t  offset_nvs;
+    int16_t  offset_nvs;
+    int8_t   tx_power_nvs;
     const tC2LORAdef *def_nvs;
-    err  = nvs_get_u8(hnd, C2LORA_Mode, &mode_nvs);
-    err |= nvs_get_u32(hnd, C2LORA_Freq, &freq_nvs);
-    err |= nvs_get_i32(hnd, C2LORA_FreqShift, &freq_shift);
-    err |= nvs_get_i32(hnd, C2LORA_Offset, &offset_nvs);
-    if ((err == ESP_OK) && (mode_nvs < C2LORA_NO_OF_MODES) && (freq_nvs >= C2LORA_MIN_FREQ_HZ) && (freq_nvs <= C2LORA_MAX_FREQ_HZ)) {
+    err  = nvs_get_u8(hnd, C2LORA_Mode_k, &mode_nvs);
+    if ((err == ESP_OK) && (mode_nvs < C2LORA_NO_OF_MODES)) {
       lora->freq_offset = offset_nvs;
-      lora->frequency   = freq_nvs;      
-      lora->freq_shift  = freq_shift;   // ToDo range check
       def_nvs = C2LORA_get_parameter4mode(mode_nvs);
       if (def_nvs != NULL) {
         lora->def = def_nvs;
-        default_mode = mode_nvs;
       } else {
         ESP_LOGW(TAG, "invalid C2LORA mode, using default.");
       }
     } else {
-      ESP_LOGW(TAG, "incomplete or invalid parameter found, using defaults.");
+      ESP_LOGW(TAG, "no parameter for mode stored.");
+    }
+    err = nvs_get_i16(hnd, C2LORA_Offset_k, &offset_nvs);
+    if ((err == ESP_OK) && (offset_nvs >= C2LORA_MIN_OFFSET_HZ) && (offset_nvs <= C2LORA_MAX_OFFSET_HZ)) {
+      lora->freq_offset = offset_nvs;
+    }
+    err = nvs_get_u32(hnd, C2LORA_Freq_k, &freq_nvs);
+    err |= nvs_get_i32(hnd, C2LORA_FreqShift, &freq_shift);
+    if ((err == ESP_OK) && (freq_nvs >= C2LORA_MIN_FREQ_HZ) && (freq_nvs <= C2LORA_MAX_FREQ_HZ)) {
+      lora->frequency   = freq_nvs;      
+      lora->freq_shift  = freq_shift;   // ToDo range check
+    } else {
+      ESP_LOGW(TAG, "no frequency stored, using defaults.");
+    }
+    err = nvs_get_i8(hnd, C2LORA_TXPOWER_k, &tx_power_nvs);
+    if ((err == ESP_OK) && (tx_power_nvs >= -9) && (tx_power_nvs <= 22)) {
+      lora->tx_power_dBm = tx_power_nvs;
     }
     nvs_close(hnd);
   } // else namespace defined
-  ESP_LOGI(TAG, "init c2lora 4 dongle-mode done, mode: %s", C2LORA_get_mode_name(default_mode));
+  return err;
+}
+
+
+esp_err_t C2LORA_init_donglemode(tC2LORA_mode default_mode) {
+  esp_err_t err = C2LORA_prepare_streamstruct(&lora_stream, default_mode);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "init tranceiver fails");
+     return err; 
+  }
+  err = C2LORA_load_parameters();
+  ESP_LOGI(TAG, "init c2lora 4 dongle-mode done, mode: %s", C2LORA_get_mode_name(lora_stream.def->mode));
   return ESP_OK;
 }
 
 
 
 esp_err_t C2LORA_init_tranceiver(int spi_device_no, unsigned int default_frequency_hz, tC2LORA_mode default_mode, int freq_offset_hz) {
+  // this is the SPI device config:
   const tsx126x_config cfg = {
     .spi_num    = SX126X_HOST,
     .spi_device = spi_device_no,
@@ -214,7 +235,6 @@ esp_err_t C2LORA_init_tranceiver(int spi_device_no, unsigned int default_frequen
     .ext_rxsw_pin = GPIO_NUM_NC,
 #endif
   };
-  nvs_handle hnd;
 
   sx126x_init_mutex();
 
@@ -224,49 +244,20 @@ esp_err_t C2LORA_init_tranceiver(int spi_device_no, unsigned int default_frequen
      return err; 
   }
 
-
   tLoraStream *lora = &lora_stream;
 
   lora->cmd_queue   = xQueueCreateStatic(C2LORA_UHF_CMD_QUEUE_SIZE, sizeof(tLoraCmdQItem), lora_queue_item_buf, &lora_queue_struct_buf);
   lora->freq_offset = freq_offset_hz;
   lora->frequency   = default_frequency_hz;
 
-  err = nvs_open(C2LORA_namespace, NVS_READONLY, &hnd);
-  if (err != ESP_OK) {
-    ESP_LOGW(TAG, "no parameter set found in NVS");    
-  } else {
-    uint8_t  mode_nvs;
-    uint32_t freq_nvs;
-    int32_t  freq_shift;
-    int32_t  offset_nvs;
-    const tC2LORAdef *def_nvs;
-    err  = nvs_get_u8(hnd, C2LORA_Mode, &mode_nvs);
-    err |= nvs_get_u32(hnd, C2LORA_Freq, &freq_nvs);
-    err |= nvs_get_i32(hnd, C2LORA_FreqShift, &freq_shift);
-    err |= nvs_get_i32(hnd, C2LORA_Offset, &offset_nvs);
-    if ((err == ESP_OK) && (mode_nvs < C2LORA_NO_OF_MODES) && (freq_nvs >= C2LORA_MIN_FREQ_HZ) && (freq_nvs <= C2LORA_MAX_FREQ_HZ)) {
-      lora->freq_offset = offset_nvs;
-      lora->frequency   = freq_nvs;      
-      lora->freq_shift  = freq_shift;   // ToDo range check
-      def_nvs = C2LORA_get_parameter4mode(mode_nvs);
-      if (def_nvs != NULL) {
-        lora->def = def_nvs;
-        default_mode = mode_nvs;
-      } else {
-        ESP_LOGW(TAG, "invalid C2LORA mode, using default.");
-      }
-    } else {
-      ESP_LOGW(TAG, "incomplete or invalid parameter found, using defaults.");
-    }
-    nvs_close(hnd);
-  } // else namespace defined
-  
-  ESP_RETURN_ON_ERROR(C2LORA_init_sx126x(&lora_stream, &cfg), TAG, "SX126x init fails");
+  err = C2LORA_load_parameters();
+
+  ESP_RETURN_ON_ERROR(C2LORA_init_sx126x(lora, &cfg), TAG, "SX126x init fails");
 
   err = xTaskCreate(C2LORA_control_task, "C2LORA_CTL", C2LORARX_TASK_STACK_SIZE, lora, C2LORARX_TASK_PRIORITY, NULL)? ESP_OK: ESP_FAIL;
-
+  ESP_RETURN_ON_ERROR(err, TAG, "no control task created.");
   ESP_LOGI(TAG, "init tranceiver done, tuned to %8.4fMHz, mode: %s", (double)lora->frequency / 1000000, C2LORA_get_mode_name(default_mode));
-  return ESP_OK;
+  return err;
 }
 
 
@@ -289,7 +280,6 @@ esp_err_t C2LORA_init_tranceiver_2(int spi_device_no, int freq_offset_hz) {
   };
   nvs_handle hnd;
 
-
   tLoraStream *lora_prim = C2LORA_get_primary_stream();
   tLoraStream *lora      = C2LORA_get_2nd_stream();
   tC2LORA_mode c2_mode   = C2LORA_get_mode_by_parameter(lora_prim->def);
@@ -301,17 +291,18 @@ esp_err_t C2LORA_init_tranceiver_2(int spi_device_no, int freq_offset_hz) {
   }
   ESP_LOGD(TAG, "...init 2nd SX126x tranceiver module...");
 
-  lora->cmd_queue   = xQueueCreateStatic(C2LORA_UHF_CMD_QUEUE_SIZE, sizeof(tLoraCmdQItem), lora_2_queue_item_buf, &lora_2_queue_struct_buf);
-  lora->freq_offset = freq_offset_hz;
-  lora->frequency   = lora_prim->frequency + lora_prim->freq_shift; // wen don't neet to switch frequencies
-  lora->freq_shift  = 0;
+  lora->cmd_queue    = xQueueCreateStatic(C2LORA_UHF_CMD_QUEUE_SIZE, sizeof(tLoraCmdQItem), lora_2_queue_item_buf, &lora_2_queue_struct_buf);
+  lora->freq_offset  = freq_offset_hz;
+  lora->frequency    = lora_prim->frequency + lora_prim->freq_shift; // wen don't neet to switch frequencies
+  lora->freq_shift   = 0;
+  lora->tx_power_dBm = lora_prom->tx_power_dBm;
 
   err = nvs_open(C2LORA_namespace, NVS_READONLY, &hnd);
   if (err != ESP_OK) {
     ESP_LOGW(TAG, "no parameter set found in NVS");    
   } else {
-    int32_t  offset_nvs;
-    err = nvs_get_i32(hnd, C2LORA_Offs_2, &offset_nvs);
+    int16_t offset_nvs;
+    err = nvs_get_i16(hnd, C2LORA_Offs_2, &offset_nvs);
     if ((err == ESP_OK)) {
       lora->freq_offset = offset_nvs;
     } else {
@@ -322,6 +313,7 @@ esp_err_t C2LORA_init_tranceiver_2(int spi_device_no, int freq_offset_hz) {
   ESP_RETURN_ON_ERROR(C2LORA_init_sx126x(lora, &cfg), TAG, "2nd SX126x init fails");
 
   err = xTaskCreate(C2LORA_control_task, "C2LORA_CTL2", C2LORARX_TASK_STACK_SIZE, lora, C2LORARX_TASK_PRIORITY+1, NULL)? ESP_OK: ESP_FAIL;
+  ESP_RETURN_ON_ERROR(err, TAG, "no control task created.");
 
   ESP_LOGI(TAG, "init 2nd tranceiver done, tuned to %8.4fMHz, mode: %s", (double)lora->frequency / 1000000, C2LORA_get_mode_name(c2_mode));
   return ESP_OK;
@@ -342,12 +334,13 @@ esp_err_t C2LORA_save_config(void) {
   esp_err_t err = nvs_open(C2LORA_namespace, NVS_READWRITE, &hnd);
   ESP_RETURN_ON_FALSE(err == ESP_OK, err, TAG, "can't open NVS");
   tLoraStream *lora = C2LORA_get_primary_stream();
-  err  = nvs_set_u8( hnd, C2LORA_Mode,   lora->def->mode);
-  err |= nvs_set_u32(hnd, C2LORA_Freq,   lora->frequency);
+  err  = nvs_set_u8( hnd, C2LORA_Mode_k,   lora->def->mode);
+  err |= nvs_set_i16(hnd, C2LORA_Offset_k, lora->freq_offset);
+  err |= nvs_set_u32(hnd, C2LORA_Freq_k,   lora->frequency);
   err |= nvs_set_i32(hnd, C2LORA_FreqShift, lora->freq_shift);
-  err |= nvs_set_i32(hnd, C2LORA_Offset, lora->freq_offset);
+  err |= nvs_set_i8( hnd, C2LORA_TXPOWER_k, lora->tx_power_dBm);
 #ifdef C2LORA_2ND_STREAM
-  err |= nvs_set_i32(hnd, C2LORA_Offs_2, C2LORA_get_2nd_stream()->freq_offset);
+  err |= nvs_set_i16(hnd, C2LORA_Offs_2, C2LORA_get_2nd_stream()->freq_offset);
 #endif
   if (err) {
     ESP_LOGD(TAG, "config save: have errors (%s)", esp_err_to_name(err));  
@@ -494,8 +487,24 @@ esp_err_t C2LORA_set_channel(unsigned int frequency_hz, tC2LORA_mode mode) {
 }
 
 
+signed char C2LORA_get_txpower(void) {
+  signed char power_dBm = C2LORA_get_stream_4_transmit()->tx_power_dBm;
+#if (defined SX126X_PA_GAIN_DB) && (SX126X_PA_GAIN_DB > 0)
+  power_dBm += SX126X_PA_GAIN_DB;
+#endif
+  return power_dBm;
+}
+
+
 esp_err_t C2LORA_set_txpower(signed char power_dBm) {
   tLoraStream *lora = C2LORA_get_stream_4_transmit();
+#if (defined SX126X_PA_GAIN_DB) && (SX126X_PA_GAIN_DB > 0)
+  power_dBm -= SX126X_PA_GAIN_DB;
+#endif
+#ifdef C2LORA_2ND_STREAM
+  C2LORA_set_tx_power(lora, power_dBm);
+  lora = (lora != &lora_stream) &lora_stream: &lora_2nd_stream;  
+#endif
   return C2LORA_set_tx_power(lora, power_dBm);
 }
 
@@ -541,7 +550,7 @@ esp_err_t C2LORA_set_calibration(bool active, bool rx_module) {
     if (result != ESP_OK) {
       printf("continuous wave not active!\n");
     } else {
-      printf("transmitting continuous wave, actual frequency offset is %+ldHz\n" , lora->freq_offset);
+      printf("transmitting continuous wave, actual frequency offset is %+dHz\n" , lora->freq_offset);
     }
   } else {
     printf("continuous disabled. standby.\n");
@@ -551,7 +560,7 @@ esp_err_t C2LORA_set_calibration(bool active, bool rx_module) {
 
 
 esp_err_t C2LORA_set_freq_offset(int freq_offset_hz) {
-  ESP_RETURN_ON_FALSE((freq_offset_hz > -1000000) && (freq_offset_hz < 1000000), ESP_ERR_INVALID_ARG, TAG, "frequency offset is to high");
+  ESP_RETURN_ON_FALSE((freq_offset_hz > -32000) && (freq_offset_hz < 32000), ESP_ERR_INVALID_ARG, TAG, "frequency offset is to high");
   tLoraStream *lora = C2LORA_get_primary_stream();
   lora->freq_offset = freq_offset_hz;
   return C2LORA_task_run_cmd(lora, c2lora_update_frequency, (void *) lora->frequency, false);

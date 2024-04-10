@@ -77,7 +77,8 @@ struct sLoraStream {
   tLoraTxState    state;
   uint32_t        frequency;      // frequency for receiving in [Hz]
   int32_t         freq_shift;     // if not zero: transmit frequency is "frequency + freq_shift"
-  int32_t         freq_offset;    // calibrated offset for exact output frequency
+  int16_t         freq_offset;    // calibrated offset for exact output frequency (max +/- 32kHz)
+  int8_t          tx_power_dBm;   // transmit power of SX126x device (external PA gain not added; -9 to +22dBm)
 
   QueueHandle_t   cmd_queue;
   EventGroupHandle_t events;

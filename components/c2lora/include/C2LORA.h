@@ -32,6 +32,9 @@ main API file for accessing the C2LORA UHF link
 #define C2LORA_MAX_FREQ_HZ            440000000L
 #endif
 
+#define C2LORA_MIN_OFFSET_HZ          (-32000)
+#define C2LORA_MAX_OFFSET_HZ          (+32000)
+
 #define CQCALL_DESTINATION            "CQCQCQ"
 
 
@@ -80,6 +83,7 @@ unsigned char C2LORA_get_codec_type(void);
 
 esp_err_t C2LORA_set_mode(tC2LORA_mode mode);
 
+signed char C2LORA_get_txpower(void);
 esp_err_t C2LORA_set_txpower(signed char power_dBm);
 
 esp_err_t C2LORA_set_calibration(bool active, bool rx_module);
