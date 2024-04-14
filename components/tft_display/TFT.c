@@ -1,7 +1,7 @@
 /*
  * TFT.c
  *
- * This header file contain to project 'C2LoRaGW'.
+ * This header file belongs to project 'C2LoRaGW'.
  * (c) 2024, DO1FJN (Jan Alte)
  *
  *  Created on: 01.01.2024
