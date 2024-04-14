@@ -7,6 +7,8 @@ Unless required by applicable law or agreed to in writing, this
 software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 CONDITIONS OF ANY KIND, either express or implied.
 
+Report:
+2024-04-14  first weak function to handle UI updates
 */
 
 #include "c2lora_uhf.h"
@@ -98,7 +100,12 @@ static uint8_t DMA_ATTR   rx_packet[256];
 static void C2LORA_control_task(void *thread_data);
 
 
+__weak void C2LORA_ui_notify_mode_change(tC2LORA_mode new_mode) { }
+__weak void C2LORA_ui_notify_freq_change(int32_t freq_hz, int32_t freq_sft, tC2LORA_state state) { }
+__weak void C2LORA_ui_notify_state_change(tC2LORA_state state) { }
 
+__weak void C2LORA_ui_notify_rx_rssi(int8_t rssi, int8_t snr, int8_t signal) { }
+__weak void C2LORA_ui_notify_rx_header(bool valid, const char *callsign, const char *recipient, tKindOfSender kos, bool repeated, const char *area_code, const char *locator);
 
 #ifdef C2LORA_2ND_STREAM
 
@@ -297,7 +304,7 @@ esp_err_t C2LORA_init_tranceiver_2(int spi_device_no, int freq_offset_hz) {
   lora->freq_offset  = freq_offset_hz;
   lora->frequency    = lora_prim->frequency + lora_prim->freq_shift; // wen don't neet to switch frequencies
   lora->freq_shift   = 0;
-  lora->tx_power_dBm = lora_prom->tx_power_dBm;
+  lora->tx_power_dBm = lora_prim->tx_power_dBm;
 
   err = nvs_open(C2LORA_namespace, NVS_READONLY, &hnd);
   if (err != ESP_OK) {
@@ -395,6 +402,25 @@ inline signed int C2LORA_get_freqshift(void) {
 }
 
 
+static tC2LORA_state c2lora_get_state(const tLoraStream *lora) {
+  if (lora->state >= RX_NOSYNC) {
+    return C2S_RX;
+  } else if (lora->state >= TX_SEND_HEADER) {
+    return C2S_TX;
+  } else if (lora->state==LS_CALIBRATE) {
+    return C2S_CAL;   
+  } else if (lora->state >= LS_IDLE) {
+    return C2S_STANDBY;
+  }
+  return C2S_OFF;
+}
+
+tC2LORA_state C2LORA_get_state(void) {
+  tLoraStream *lora = C2LORA_get_primary_stream();
+  return c2lora_get_state(lora);
+}
+
+
 static uint32_t c2lora_update_frequency(tLoraStream *lora, void * arg) {
   sx126x_status_t s;
   lora->frequency = (uint32_t) arg;
@@ -403,6 +429,11 @@ static uint32_t c2lora_update_frequency(tLoraStream *lora, void * arg) {
   s = sx126x_set_rf_freq(lora->ctx, lora->frequency + lora->freq_offset);  // needs ~40µs BUSY
   if (s) {
     ESP_LOGE(TAG, "set freq");
+  } else {
+#ifdef C2LORA_2ND_STREAM
+    if ( lora == &lora_stream )
+#endif
+    C2LORA_ui_notify_freq_change(lora->state==LS_CALIBRATE? lora->freq_offset: lora->frequency, lora->freq_shift, c2lora_get_state(lora));
   }
   DEBUG_SX126X_INFOS(lora->ctx);
   sx126x_unlock();
@@ -421,8 +452,9 @@ esp_err_t C2LORA_set_frequency(unsigned int frequency_hz, signed int tx_shift_hz
   err = C2LORA_task_run_cmd(lora, c2lora_update_frequency, (void *)frequency_hz, false);
 #ifdef C2LORA_2ND_STREAM
   lora = C2LORA_get_2nd_stream();
-  lora->frequency = frequency_hz + tx_shift_hz;
-  err = C2LORA_task_run_cmd(lora, c2lora_update_frequency, (void *)frequency_hz, false);
+  lora->frequency  = frequency_hz + tx_shift_hz;
+  lora->freq_shift = 0;
+  err = C2LORA_task_run_cmd(lora, c2lora_update_frequency, (void *)lora->frequency, false);
 #endif
   return err;
 }
@@ -445,13 +477,20 @@ static uint32_t c2lora_set_c2mode(tLoraStream *lora, void * arg) {
   sx126x_lock();
   s = sx126x_set_lora_mod_params(lora->ctx, &lora->def->mod); // -> these are 3 separate I/Os (hal_write, read+write register within BUSY period)
   sx126x_unlock();
-  if (s) ESP_LOGE(TAG, "set lora mod params");        
+  if (s) {
+    ESP_LOGE(TAG, "set lora mod params");        
+  } else {
+#ifdef C2LORA_2ND_STREAM
+    if (lora == &lora_stream)
+#endif
+    C2LORA_ui_notify_mode_change(lora->def->mode);
+  }
   return s? ESP_FAIL: ESP_OK;
 }
 
 
 esp_err_t C2LORA_set_mode(tC2LORA_mode mode) {
-  esp_err_t err = ESP_OK;;
+  esp_err_t err = ESP_OK;
   tLoraStream *lora = C2LORA_get_primary_stream();
   ESP_RETURN_ON_FALSE((lora->state == LS_IDLE) || (lora->state == RX_NOSYNC), ESP_ERR_INVALID_STATE, TAG, "C2LORA is not idle");  
   const tC2LORAdef *new_def = C2LORA_get_parameter4mode(mode);
@@ -505,7 +544,7 @@ esp_err_t C2LORA_set_txpower(signed char power_dBm) {
 #endif
 #ifdef C2LORA_2ND_STREAM
   C2LORA_set_tx_power(lora, power_dBm);
-  lora = (lora != &lora_stream) &lora_stream: &lora_2nd_stream;  
+  lora = (lora != &lora_stream)? &lora_stream: &lora_2nd_stream;  
 #endif
   return C2LORA_set_tx_power(lora, power_dBm);
 }
@@ -528,8 +567,10 @@ static uint32_t c2lora_enable_calibration(tLoraStream *lora, void * arg) {
   sx126x_lock();
   if ((bool) arg) {
     s = sx126x_set_tx_cw(lora->ctx);
+    C2LORA_ui_notify_freq_change(lora->freq_offset, 0, C2S_CAL);
   } else {
     s = sx126x_set_standby(lora->ctx, SX126X_STANDBY_CFG_RC);
+    C2LORA_ui_notify_freq_change(lora->frequency, lora->freq_shift, C2S_STANDBY);
   }
   sx126x_unlock();
   if (s == SX126X_STATUS_OK) lora->state = (bool) arg? LS_CALIBRATE: LS_IDLE;
@@ -561,9 +602,9 @@ esp_err_t C2LORA_set_calibration(bool active, bool rx_module) {
 }
 
 
-esp_err_t C2LORA_set_freq_offset(int freq_offset_hz) {
+esp_err_t C2LORA_set_freq_offset(int freq_offset_hz, bool rx_module) {
+  tLoraStream *lora = rx_module? C2LORA_get_primary_stream(): C2LORA_get_stream_4_transmit();
   ESP_RETURN_ON_FALSE((freq_offset_hz > -32000) && (freq_offset_hz < 32000), ESP_ERR_INVALID_ARG, TAG, "frequency offset is to high");
-  tLoraStream *lora = C2LORA_get_primary_stream();
   lora->freq_offset = freq_offset_hz;
   return C2LORA_task_run_cmd(lora, c2lora_update_frequency, (void *) lora->frequency, false);
 }
@@ -1049,6 +1090,17 @@ static inline esp_err_t c2lora_transmit_funct(tLoraStream *lora) {
     ESP_LOGE(TAG, "can't enable transmitter (%s)", esp_err_to_name(err));
     return err;
   }
+#ifdef C2LORA_2ND_STREAM
+  if ((lora != &lora_stream) && (lora->frequency != lora_stream.frequency)) {
+    C2LORA_ui_notify_freq_change(lora->frequency + lora->freq_shift, -lora_stream.freq_shift, C2S_TX);
+  } else
+#endif
+  if (lora->freq_shift != 0) {
+    C2LORA_ui_notify_freq_change(lora->frequency + lora->freq_shift, -lora->freq_shift, C2S_TX);
+  } else {
+    C2LORA_ui_notify_state_change(C2S_TX);
+  }
+
   ESP_LOGI(TAG, "C2LORA TX start, %ubits header, %ubits of %dtotal, %ubits cyclic data", lora->p.bits_header, lora->p.bits_dvoice, lora->def->bytes_per_packet << 3, lora->p.bits_cydata);
 
   do {  // loop until the TX_LAST_FRAME
@@ -1185,7 +1237,14 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
   cyclic_data_to = (cydata_time_us + 10000) / (configTICK_RATE_HZ * 100);
 
   xEventGroupClearBits(lora->events, C2LORA_EVENT_RECONFIGURE|C2LORA_EVENT_SX126X_INT);
-  
+
+  if (lora->state >= RX_NOSYNC) {
+    if (lora->freq_shift != 0) {
+      C2LORA_ui_notify_freq_change(lora->frequency, lora->freq_shift, C2S_RX);
+    } else {
+      C2LORA_ui_notify_state_change(C2S_RX);
+    }
+  }
   ESP_LOGD(TAG, "receiving %s (%d)", (lora->state >= RX_NOSYNC? "start": "canceled"), lora->state);
 
   while (lora->state >= RX_NOSYNC) {
@@ -1268,7 +1327,8 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
             rxpacket_status.rssi_pkt_in_dbm,
             rxpacket_status.signal_rssi_pkt_in_dbm,
             rxpacket_status.snr_pkt_in_db, lora->frame_cnt, irq_mask);
-#endif              
+#endif    
+          C2LORA_ui_notify_rx_rssi(rxpacket_status.rssi_pkt_in_dbm, rxpacket_status.snr_pkt_in_db, rxpacket_status.signal_rssi_pkt_in_dbm);
         }
         //if (rxbuffer_status.pld_len_in_bytes > 0) {
         //  ESP_LOG_BUFFER_HEX(TAG, rx_packet, rxbuffer_status.pld_len_in_bytes);
@@ -1420,8 +1480,9 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
         header_ok = C2LORA_check_header(rx_packet + 1, lora->def->bytes_per_header);
         kos       = C2LORA_decode_header(rx_packet + 1, callsign, recipient, &was_repeated);
         tC2LORA_mode mode = lora->def->mode;
+        const char *area_code = NULL;
+        char locator[8];
         if (header_ok) {
-          char locator[8];
           uint16_t areacode;
           C2LORA_get_from_header(mode, rx_packet + 1, &areacode, locator, false);
 #ifndef CONFIG_USE_TEST_BITPATTERN    
@@ -1433,6 +1494,7 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
         } else {
 
         }
+        C2LORA_ui_notify_rx_header(header_ok, callsign, recipient, kos, was_repeated, area_code, locator);
 #if CONFIG_USE_TEST_BITPATTERN
         ESP_LOGD(TAG, "RX header (%d bits) received", lora->p.bits_header);
         ESP_LOG_BUFFER_HEX_LEVEL(TAG, rx_packet + 1, rx_byte_offset - 1, ESP_LOG_DEBUG);
@@ -1570,8 +1632,17 @@ static void C2LORA_control_task(void *thread_data) {
     if ((lora->state == LS_IDLE) && (lora_events & C2LORA_EVENT_RECEIVE_ACTI)) {
       wait_4_cmd  = 1;
       lora->state = RX_NOSYNC;
-    } // fi
-
+    }
+#ifdef C2LORA_2ND_STREAM
+   if ((lora != &lora_stream) && (lora->frequency != lora_stream.frequency)) {
+     C2LORA_ui_notify_freq_change(lora_stream.frequency, lora_stream.freq_shift, c2lora_get_state(&lora_stream));
+   } else {
+    C2LORA_ui_notify_state_change(c2lora_get_state(&lora_stream));
+   }
+#else
+   C2LORA_ui_notify_state_change(c2lora_get_state(lora));
+#endif
+    
     sx126x_lock();
     sx126x_clear_irq_status(lora->ctx, SX126X_IRQ_ALL);
     sx126x_unlock();

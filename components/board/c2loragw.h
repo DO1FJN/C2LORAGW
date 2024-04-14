@@ -8,6 +8,9 @@
 
 #define BOARD_5V_POWERMODE_Pin  18
 
+#define I2C_SDA_Pin             1
+#define I2C_SCL_Pin             2
+
 #define SX126X_HOST             SPI2_NUM
 #define SX126X_SPISPEED_MHZ     10
 
@@ -45,6 +48,12 @@
 #define CODEC_I2S_MCLK_Pin      21
 
 #define AUDIO_I2S_ENABLE        GPIO_NUM_NC
+
+#define OLED_IF_TYPE            0       // (0) I2C, (1) SPI
+#define	OLED_X_SIZE		128
+#define OLED_Y_SIZE		64
+#define OLED_CTRL_POSITION      BOTTOM
+#define OLED_Y_OFFSET           0
 
 // unused
 #define	TFT_X_SIZE		320

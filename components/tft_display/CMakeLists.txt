@@ -1,5 +1,6 @@
 
-if (CONFIG_TARGET_LILYGO_TDECK OR CONFIG_TARGET_BREADBOARD)
+if (CONFIG_TARGET_LILYGO_TDECK)
+# OR CONFIG_TARGET_BREADBOARD)
 set(tft_srcs "ST7789.c" "TFT.c" "Backlight.c" "font2disp.c" "font2ram.c")
 set(tft_reqs "fonts")
 else()

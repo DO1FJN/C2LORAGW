@@ -61,12 +61,6 @@ typedef struct {
   unsigned short *	pixel;
 } tSprite;
 
-typedef enum {
-  ICON_GRDC, ICON_GRDF, ICON_RAMPC, ICON_RAMPF, ICON_TIME
-} tUnitIcon;
-
-
-
 
 esp_err_t	TFT_Init(void);
 

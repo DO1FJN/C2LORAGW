@@ -38,7 +38,9 @@ typedef enum {
 } tTextAlign;
 
 
-void	fnt_test(const Font *font);
+unsigned int  fnt_readUTF8(const char **text_ptr);
+unsigned char fnt_getIndex(const Font *font, unsigned int chr);
+
 int	fnt_writeStr(const char *text, short x, short y, const Font *font);
 
 int	FONT_getWidth(const Font *font, const char *text);

@@ -1,3 +1,14 @@
+/*
+ * font_exports.h
+ *
+ * This header file belongs to project 'C2LoRaGW'.
+ * (c) 2024, DO1FJN (Jan Alte)
+ *
+ *     Project: C2 Lora Gateway
+ *      Author: Jan Alte, DO1FJN
+ */
+
+#include "fonts.h"
 
 #pragma once
 

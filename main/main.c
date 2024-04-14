@@ -8,11 +8,16 @@ This file is the main source file of project 'C2LoRaGW'.
 Unless required by applicable law or agreed to in writing, this
 software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 CONDITIONS OF ANY KIND, either express or implied.
+
 */
 
 #include "sdkconfig.h"
 
 #include "hardware.h"
+
+#include "ui.h"
+#include "OLED.h" // for tests only
+
 
 #include "MasterIni.h"
 #include "utilities.h"
@@ -119,16 +124,8 @@ static const tHAMdLNK_network_config ham2lnk_default_config = {
 
 static char cmd_prompt[24];
 
-/*
-static const thamdlnk2audio_config la_default_config = {
-  .callsign = CONFIG_DEFAULT_CALLSIGN,
-  .name = "ESP32-S3 Lora Gateway Demo",
-  .udp_dv_length_ms = 240,
-  .udp_dv_interleave = true
-};
-*/
 
- static void app_set_default_debuglevel(void) {
+static void app_set_default_debuglevel(void) {
 #if CONFIG_LOG_DEFAULT_LEVEL > 1
   esp_log_level_set("*", ESP_LOG_INFO);    
   esp_log_level_set("wifi", ESP_LOG_WARN);
@@ -137,16 +134,20 @@ static const thamdlnk2audio_config la_default_config = {
   //esp_log_level_set("WiFiSTA", ESP_LOG_VERBOSE);
 
   esp_log_level_set("LoRaGW", ESP_LOG_VERBOSE);
-  esp_log_level_set("LAN", ESP_LOG_VERBOSE);
-  esp_log_level_set("UDPan", ESP_LOG_VERBOSE);
+  //esp_log_level_set("UI", ESP_LOG_VERBOSE);
+  //esp_log_level_set("LAN", ESP_LOG_VERBOSE);
+  //esp_log_level_set("UDPan", ESP_LOG_VERBOSE);
   //esp_log_level_set("NTPclient", ESP_LOG_VERBOSE);
 
+  //esp_log_level_set("OLED", ESP_LOG_VERBOSE);
+  //esp_log_level_set("SSD1306", ESP_LOG_VERBOSE);
+
   esp_log_level_set("C2LORA", ESP_LOG_VERBOSE);
-  esp_log_level_set("C2LORAcore", ESP_LOG_VERBOSE);
-  esp_log_level_set("C2LRA_HDR", ESP_LOG_VERBOSE);
-  esp_log_level_set("C2LORA-UDP", ESP_LOG_VERBOSE);
+  //esp_log_level_set("C2LORAcore", ESP_LOG_VERBOSE);
+  //esp_log_level_set("C2LRA_HDR", ESP_LOG_VERBOSE);
+  //esp_log_level_set("C2LORA-UDP", ESP_LOG_VERBOSE);
   //esp_log_level_set("HdL2AUDIO", ESP_LOG_DEBUG);
-  esp_log_level_set("LocalAudio", ESP_LOG_VERBOSE);
+  //esp_log_level_set("LocalAudio", ESP_LOG_VERBOSE);
 
   //esp_log_level_set("ST7789", ESP_LOG_VERBOSE);
   //esp_log_level_set("S_SPI", ESP_LOG_VERBOSE);  
@@ -194,10 +195,12 @@ static void fs_close(void) {
 
 
 #define BLINK_PATTERN_NOSPI     0x0
+#define BLINK_PATTERN_NOI2C     0x0
 #define BLINK_PATTERN_NOWIFI    0x0
 #define BLINK_PATTERN_NOHAMDLNK 0x0
 #define BLINK_PATTERN_NOAUDIO   0x0
 #define BLINK_PATTERN_NOC2LORA  0x0
+
 
 static void stop_boot_with_fail(uint32_t blink_pattern) {
   ESP_LOGE(TAG, "stopped with fail blink pattern %08lxh", blink_pattern);
@@ -556,7 +559,7 @@ static int c2lora_console(int argc, char **argv) {
     break;
   case 6:
     if (argc < 3) break;
-    C2LORA_set_freq_offset(0);
+    C2LORA_set_freq_offset(str_readnum(argv[2], 0, -32000, 32000), argc > 3? str_getOnOff(argv[3]): false);
     break;
   case 7: // save
     C2LORA_save_config();
@@ -915,7 +918,13 @@ static void print_header_additionals(void) {
 }
 
 
-static const char *local_cmd_list[] = { "info", "startup", "callsign", "recipient", "KoS", "areacode", "locator", "hostname", "volume", "micgain", "udptarget", NULL };
+static const char *local_cmd_list[] = { 
+  "info", "startup", "callsign", "recipient", "KoS", "areacode", "locator", "hostname",
+  "volume", "micgain", 
+  "udptarget", 
+  "oledtest",
+  NULL 
+};
 static const char *startup_modes[]  = { "OFFLINE", "DONGLE", "STANDBY", "ONAIR", "NOWIFI", NULL };
 
 static int localset_console(int argc, char **argv) {
@@ -1010,6 +1019,9 @@ static int localset_console(int argc, char **argv) {
       printf("UDP target '%s' stored.\n", value);
       cmd_failed = false;
     }
+    break;  
+  case 11:  // oled test
+    OLED_InverseDisp(str_getOnOff(value));
     break;  
   } // hctiws
 
@@ -1117,7 +1129,7 @@ static int localget_console(int argc, char **argv) {
 
 
 static void register_localsetfunct(void) {
-  senderinfo_args.sel = arg_str1(NULL, NULL, "<info|startup|callsign|recipient|KoS|areacode|locator|hostname>", "change information transmitted if PTT is used.");
+  senderinfo_args.sel = arg_str1(NULL, NULL, "<info|startup|callsign|recipient|KoS|areacode|locator|hostname|volume|micgain|udptarget>", "change information transmitted if PTT is used.");
   senderinfo_args.val = arg_str0(NULL, NULL, "<value>", "callsign, recipient, ...");
   senderinfo_args.end = arg_end(2);
 
@@ -1139,50 +1151,6 @@ static void register_localsetfunct(void) {
 
 #endif // local PTT
 
-
-#include "s_spi.h" // ToDo anders
-
-static esp_err_t start_ui(void) {
-#ifdef TFT_HOST
-  tTextObj ProdDisp = {
-    .font  = &font_HackBig40sspace,  .align = taCENTERBTM,
-    .color = COLOR_WHITE, .bgcol = COLOR_BLUE,
-    .box   = { .left = 0, .top = 0, .right = 319, .bottom = 79 }
-  };
-#endif
-
-#ifdef TFT_HOST
-  if (TFT_Init() != ESP_OK) {
-    ESP_LOGE(TAG, "TFT init fails");
-  }
-#endif
-
-#if TFT_HOST==SX126X_HOST  
-  vTaskDelay(10);
-#endif
-
-
-#ifdef TFT_HOST  
-
-  //INI_apply_configuration(default_wifi, strlen(default_wifi));
-#if TFT_HOST==SX126X_HOST  
-  vTaskDelay(pdMS_TO_TICKS(20));
-#endif
-
-  if (sspi_device_select(TFT_HOST, TFT_DEVICE_NUM) != ESP_OK) {
-    ESP_LOGE(TAG, "error sel. display");
-  }
-
-  TFT_ClearAll();
-//  TFT_FillRect(40, 40, TFT_X_SIZE / 2, TFT_Y_SIZE / 2, COLOR_RED);
-//  vTaskDelay(100); 
-  ESP_LOGD(TAG, "writing test-text...!");
-  TFT_write(&ProdDisp, "C2LoraGW");
-  TFT_SetBrightness(100);
-#endif
-
-  return ESP_OK;
-}
 
 
 static bool ptt_button_state(bool go_active) {
@@ -1221,6 +1189,30 @@ static esp_err_t board_gpio_init(void) {
 }
 
 
+#if (defined I2C_SDA_Pin) && (I2C_SDA_Pin != GPIO_NUM_NC)
+
+#include "driver/i2c.h"
+
+#ifndef I2C_CLK_SPEED_HZ
+#define I2C_CLK_SPEED_HZ  400000L
+#endif
+
+static esp_err_t board_i2c_init(void) {
+  const i2c_config_t conf = {
+    .mode = I2C_MODE_MASTER,
+    .sda_io_num = I2C_SDA_Pin,
+    .scl_io_num = I2C_SCL_Pin,
+    .sda_pullup_en = GPIO_PULLUP_ENABLE,
+    .scl_pullup_en = GPIO_PULLUP_ENABLE,
+    .master.clk_speed = I2C_CLK_SPEED_HZ
+  };
+  i2c_param_config(I2C_NUM_0, &conf);
+  return i2c_driver_install(I2C_NUM_0, conf.mode, 0, 0, 0); 
+}
+
+#endif
+
+
 
 void app_main(void) {
   esp_err_t ret;
@@ -1248,6 +1240,14 @@ void app_main(void) {
   fs_open();
 
   board_gpio_init();   // initialize important GPIO together at start.
+
+#if (defined I2C_SDA_Pin) && (I2C_SDA_Pin != GPIO_NUM_NC)
+  ret = board_i2c_init();
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "*** I2C init fail ***");
+    stop_boot_with_fail(BLINK_PATTERN_NOI2C);
+  }
+#endif
 
 // Todo load all in om funcion
   startup_mode = get_app_config_from_nvs(&ham2lnk_config);
@@ -1342,9 +1342,9 @@ void app_main(void) {
     }    
   }
 
-  ret = start_ui();
+  ret = ui_Init();
   if (ret != ESP_OK) {
-    ESP_LOGW(TAG, "NO UI! Start of user interface (UI) failed.");
+    ESP_LOGW(TAG, "NO UI! Init of user interface (UI) failed.");
   }
 
   vTaskDelay(2); // wait for ESP_LOG messages (trom running tasks)
@@ -1353,7 +1353,14 @@ void app_main(void) {
   } // rof
 
   ESP_ERROR_CHECK(esp_console_start_repl(repl));
-  
+
+  if (ret == ESP_OK) { // last result from ui_Init()
+    ret = ui_Start();
+    if (ret != ESP_OK) {
+      ESP_LOGW(TAG, "Start of user interface (UI) failed.");
+    }
+  } // fi ok
+
   while (startup_mode == SM_DONGLE) {
     if (ptt_button_state(true)) {
       ESP_LOGI(TAG, "*** start streaming ***");

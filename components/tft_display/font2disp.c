@@ -282,8 +282,8 @@ int FONT_printStr(const Font *font, const char *text, tBox box, tTextAlign align
   case taRIGHT:
     fntw = FONT_getWidth(font, text);
     if (fntw < clip.width) {
-      if (align == taCENTER) xpos += (clip.width - fntw) >> 1; else xpos = (box.right + 1) - fntw;
-    }
+      if (align == taRIGHT) xpos = (box.right + 1) - fntw; else xpos += (clip.width - fntw) >> 1;
+    }    
     // fall through
   case taLEFT:
     if (align != taCENTERBTM) {

@@ -53,6 +53,10 @@ typedef enum {
   KOS_UNDEF, KOS_PORTABLE, KOS_MOBILE, KOS_STATIONARY, KOS_HOTSPOT, KOS_RELAY
 } tKindOfSender;
 
+typedef enum {
+  C2S_OFF, C2S_STANDBY, C2S_CAL, C2S_RX, C2S_TX
+} tC2LORA_state;
+
 
 typedef struct sC2LORAdef tC2LORAdef;
 typedef struct sLoraStream tLoraStream;
@@ -78,6 +82,8 @@ signed int C2LORA_get_freqshift(void);
 
 esp_err_t C2LORA_set_frequency(unsigned int frequency_hz, signed int tx_shift_hz);
 
+tC2LORA_state C2LORA_get_state(void);
+
 tC2LORA_mode C2LORA_get_mode(void);
 unsigned char C2LORA_get_codec_type(void);
 
@@ -88,7 +94,7 @@ esp_err_t C2LORA_set_txpower(signed char power_dBm);
 
 esp_err_t C2LORA_set_calibration(bool active, bool rx_module);
 
-esp_err_t C2LORA_set_freq_offset(int freq_offset_hz);
+esp_err_t C2LORA_set_freq_offset(int freq_offset_hz, bool rx_module);
 
 esp_err_t C2LORA_get_local_header(char *callsign, char *destination, tKindOfSender *kos);
 esp_err_t C2LORA_get_local_header_additionals(unsigned short *area_code, char *locator);
