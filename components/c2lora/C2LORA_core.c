@@ -201,8 +201,8 @@ esp_err_t C2LORA_init_sx126x(tLoraStream *lora, const tsx126x_config *cfg) {
   s = sx126x_cfg_tx_clamp(lora->ctx);  // optimize PA clamping threshold (workaround for antena mismatch)
   if (s) ESP_LOGE(TAG, "cfg tx clamp");
 
-  ESP_LOGD(TAG, "set freq");
-  s = sx126x_set_rf_freq(lora->ctx, lora->frequency);  // needs ~40µs BUSY
+  ESP_LOGD(TAG, "set freq to %luHz", lora->frequency + lora->freq_offset);
+  s = sx126x_set_rf_freq(lora->ctx, lora->frequency + lora->freq_offset);  // needs ~40µs BUSY
   if (s) ESP_LOGE(TAG, "set freq");
 
   C2LORA_set_tx_power(lora, lora->tx_power_dBm);
