@@ -28,7 +28,7 @@ static const char *TAG = "C2LORAcore";
 
 #define C2LORA_TIMEOUT_580            ((C2LORA_WHEADER_FRAMELEN_MS+24)*64)
 
-#define C2LORA_MAX_JITTER_US          12500   // because of the freeRTOS 10ms tick there are some 10ms gaps that can occur... 
+#define C2LORA_MAX_JITTER_US          22500   // because of the freeRTOS 10ms tick there are some 10ms gaps that can occur... 
                                               // w/o there is only a jitter of max 2 symbol length approx. 4000µs
 
 

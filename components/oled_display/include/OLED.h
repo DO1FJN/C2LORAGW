@@ -1,5 +1,5 @@
 /*
- * TFT.h
+ * OLED.h
  *
  *  Created on: 2024-04-10
  *     Project: Lora-Gateway
@@ -13,10 +13,6 @@
 
 #include <stdbool.h>
 
-// ToDo: Dual-Display setup
-#include "TFT.h"
-
-/*
 #define TEXT_MAX_CHARS		16
 
 typedef struct {
@@ -37,7 +33,7 @@ typedef struct {
   unsigned char		  width, height;
   unsigned short *	pixel;
 } tSprite;
-*/
+
 
 esp_err_t	OLED_Init(void);
 
