@@ -70,6 +70,23 @@ esp_err_t TFT_Init(void) {
 }
 
 
+inline esp_err_t TFT_select(void) {
+  esp_err_t err = ST7789_select_spi();
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "error SPI select display: %s", esp_err_to_name(err));
+  }
+  return err;
+}
+
+
+inline int TFT_wait4completion(void) {
+  int res;
+  if (!tft_lock()) return 0;
+  res = ST7789_WaitWrComplete();
+  tft_unlock();
+  return res;
+}
+
 
 void TFT_SetBrightness(unsigned short value) {
   float br = powf(value * 0.464158883362, 1.8);

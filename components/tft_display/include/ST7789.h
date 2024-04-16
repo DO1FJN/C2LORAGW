@@ -12,6 +12,10 @@
 
 esp_err_t ST7789_Init(void);
 
+esp_err_t ST7789_select_spi(void);
+
+int     ST7789_WaitWrComplete(void);
+
 void	ST7789_OnOff(int onOff);
 
 void	ST7789_SetWindow(short left, short top, short right, short bottom);

@@ -64,6 +64,10 @@ typedef struct {
 
 esp_err_t	TFT_Init(void);
 
+esp_err_t TFT_select(void);
+
+int   TFT_wait4completion(void);
+
 void	TFT_SetBrightness(unsigned short value);
 
 void	TFT_ClearAll(void);

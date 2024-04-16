@@ -215,8 +215,12 @@ esp_err_t ST7789_Init(void) {
 }
 
 
+esp_err_t ST7789_select_spi(void) {
+  return sspi_device_select(TFT_HOST, TFT_DEVICE_NUM);
+}
 
-static inline bool ST7789_WaitWrComplete(void) {
+
+inline int ST7789_WaitWrComplete(void) {
   return sspi_wait_finish(TFT_HOST, ST7789_WAITSLPOUT_MS);
 }
 
