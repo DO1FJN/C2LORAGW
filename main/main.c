@@ -16,8 +16,6 @@ CONDITIONS OF ANY KIND, either express or implied.
 #include "hardware.h"
 
 #include "ui.h"
-#include "OLED.h" // for tests only
-
 
 #include "MasterIni.h"
 #include "utilities.h"
@@ -56,8 +54,11 @@ CONDITIONS OF ANY KIND, either express or implied.
 
 
 #ifdef TFT_HOST
-#include "font_exports.h"
 #include "TFT.h"
+#endif
+
+#ifdef OLED_IF_TYPE
+#include "OLED.h" // for tests only
 #endif
 
 
@@ -134,13 +135,15 @@ static void app_set_default_debuglevel(void) {
   //esp_log_level_set("WiFiSTA", ESP_LOG_VERBOSE);
 
   esp_log_level_set("LoRaGW", ESP_LOG_VERBOSE);
-  //esp_log_level_set("UI", ESP_LOG_VERBOSE);
+  esp_log_level_set("UI", ESP_LOG_VERBOSE);
   //esp_log_level_set("LAN", ESP_LOG_VERBOSE);
   //esp_log_level_set("UDPan", ESP_LOG_VERBOSE);
   //esp_log_level_set("NTPclient", ESP_LOG_VERBOSE);
 
   //esp_log_level_set("OLED", ESP_LOG_VERBOSE);
   //esp_log_level_set("SSD1306", ESP_LOG_VERBOSE);
+  //esp_log_level_set("TFT", ESP_LOG_VERBOSE);
+  //esp_log_level_set("ST7789", ESP_LOG_VERBOSE);
 
   esp_log_level_set("C2LORA", ESP_LOG_VERBOSE);
   //esp_log_level_set("C2LORAcore", ESP_LOG_VERBOSE);
@@ -149,7 +152,7 @@ static void app_set_default_debuglevel(void) {
   //esp_log_level_set("HdL2AUDIO", ESP_LOG_DEBUG);
   //esp_log_level_set("LocalAudio", ESP_LOG_VERBOSE);
 
-  //esp_log_level_set("ST7789", ESP_LOG_VERBOSE);
+  
   //esp_log_level_set("S_SPI", ESP_LOG_VERBOSE);  
   //esp_log_level_set("i2s_loop", ESP_LOG_VERBOSE);
   //esp_log_level_set("gdma", ESP_LOG_VERBOSE);
@@ -467,7 +470,7 @@ static int32_t parse_frequency_mhz(const char *freq_str) {
       } // fi
     }
   } // fi 
-  if (freq_mhz >= 0) {
+  if ((freq_mhz >= 0) & (freq_str[0] != '-')) {
     freq_hz += freq_mhz * 1000000L;
   } else {
     freq_hz = (freq_mhz * 1000000L) - freq_hz;
@@ -922,7 +925,9 @@ static const char *local_cmd_list[] = {
   "info", "startup", "callsign", "recipient", "KoS", "areacode", "locator", "hostname",
   "volume", "micgain", 
   "udptarget", 
-  "oledtest",
+#ifdef OLED_IF_TYPE
+  "oledinverse",
+#endif 
   NULL 
 };
 static const char *startup_modes[]  = { "OFFLINE", "DONGLE", "STANDBY", "ONAIR", "NOWIFI", NULL };
@@ -1019,9 +1024,11 @@ static int localset_console(int argc, char **argv) {
       printf("UDP target '%s' stored.\n", value);
       cmd_failed = false;
     }
-    break;  
-  case 11:  // oled test
+    break;    
+  case 11:  // oled inverse on-off for testing
+#ifdef OLED_IF_TYPE
     OLED_InverseDisp(str_getOnOff(value));
+#endif
     break;  
   } // hctiws
 
