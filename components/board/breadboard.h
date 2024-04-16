@@ -9,8 +9,8 @@ hardware GPIO defines for a ESP32-S3 Noname HMI Board with TFT Display mounted t
 
 #define PROG_BUTTON_Pin         0       // IO0
 
-#define I2C_SDA_Pin             45
-#define I2C_SCL_Pin             4
+//#define I2C_SDA_Pin             45
+//#define I2C_SCL_Pin             4
 
 
 #define TFT_BACKLIGHT_PIN       14
@@ -33,11 +33,11 @@ hardware GPIO defines for a ESP32-S3 Noname HMI Board with TFT Display mounted t
 #define TFT_Y_OFFSET            35
 
 
-#define OLED_IF_TYPE            0       // (0) I2C, (1) SPI
-#define	OLED_X_SIZE		128
-#define OLED_Y_SIZE		64
-#define OLED_CTRL_POSITION      BOTTOM
-#define OLED_Y_OFFSET           0
+//#define OLED_IF_TYPE            0       // (0) I2C, (1) SPI
+//#define	OLED_X_SIZE		128
+//#define OLED_Y_SIZE		64
+//#define OLED_CTRL_POSITION      BOTTOM
+//#define OLED_Y_OFFSET           0
 
 
 #define AUDIO_I2S_WS_Pin        5
