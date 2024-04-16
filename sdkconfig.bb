@@ -508,16 +508,19 @@ CONFIG_PARTITION_TABLE_MD5=y
 # end of Partition Table
 
 #
-# Target/Board Configuration
+# Target and Board Configuration
 #
 CONFIG_TARGET_BREADBOARD=y
+# CONFIG_TARGET_HELTEC_WIFILORA_V3 is not set
 # CONFIG_TARGET_C2LOARAGW_V1 is not set
 # CONFIG_TARGET_LILYGO_TDECK is not set
 CONFIG_BOOT_FAIL_LED=0
 CONFIG_LOCALAUDIO_ENABLED=y
 CONFIG_LOCAL_PTT_ENABLED=y
 CONFIG_LOCAL_PTT_IOPIN=0
-# end of Target/Board Configuration
+CONFIG_LOW_FREQUENCY_RANGE_MHZ=420
+CONFIG_HIGH_FREQUENCY_RANGE_MHZ=450
+# end of Target and Board Configuration
 
 #
 # Feature Configuration
@@ -530,7 +533,7 @@ CONFIG_DEFAULT_CALLSIGN="C2LORA"
 # CONFIG_KOS_STATION is not set
 CONFIG_KOS_HOTSPOT=y
 # CONFIG_KOS_RELAY is not set
-CONFIG_USE_TEST_BITPATTERN=y
+# CONFIG_USE_TEST_BITPATTERN is not set
 # CONFIG_PLAIN_PASSWORDS is not set
 CONFIG_PARSE_INI_DEBUG=y
 # end of Feature Configuration
@@ -538,8 +541,17 @@ CONFIG_PARSE_INI_DEBUG=y
 #
 # HAMdLNK - HAM-d-Link Config
 #
+CONFIG_HAMDLNK_PORT_MAIN=30003
+CONFIG_HAMDLNK_PORT_2ND=30004
 CONFIG_MAX_USERDATA=4
 # end of HAMdLNK - HAM-d-Link Config
+
+#
+# Local Audio Configuration
+#
+CONFIG_AUDIOOUT_DEFAULT_0DB=0x10000
+CONFIG_AUDIOIN_DEFAULT_0DB=0x00800
+# end of Local Audio Configuration
 
 #
 # Network Configuration
