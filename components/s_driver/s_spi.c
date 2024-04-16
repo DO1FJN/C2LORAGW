@@ -64,7 +64,9 @@ bool spicommon_periph_claim(spi_host_device_t host, const char* source);
 #define SSPI_BUSFLAG_WPHD          (1<<7)     ///< Check existing of WP and HD pins. Or indicates WP & HD pins initialized.
 #define SSPI_BUSFLAG_QUAD          (SSPI_BUSFLAG_DUAL|SSPI_BUSFLAG_WPHD)     ///< Check existing of MOSI/MISO/WP/HD pins as output. Or indicates bus able to work under QIO mode.
 
-#define SSPI_TRANSFER_DONE_BIT    1 // task notify bit
+#define SSPI_NOTIFY_INDEX          (CONFIG_FREERTOS_TASK_NOTIFICATION_ARRAY_ENTRIES - 1)
+#define SSPI_TRANSFER_DONE_BIT     0x10000000L    // task notify bit
+
 
 
 
@@ -974,7 +976,7 @@ static void IRAM_ATTR sspi_interrupt(void *arg) {
     esp_intr_enable(sspi->intr);
 
   } else if (dev && dev->waiting_task) {
-    xTaskNotifyFromISR(dev->waiting_task, SSPI_TRANSFER_DONE_BIT, eSetBits, &do_yield);
+    xTaskNotifyIndexedFromISR(dev->waiting_task, SSPI_NOTIFY_INDEX, SSPI_TRANSFER_DONE_BIT, eSetBits, &do_yield);
   }
 
   if (do_yield) portYIELD_FROM_ISR();
@@ -994,7 +996,7 @@ static inline void sspi_set_dc_pin(const tsspi_def *sspi, uint32_t level) {
 
 bool sspi_wait_transfer(tsspi_dev *dev, unsigned int timeout_ms) {
   uint32_t return_bits;
-  BaseType_t wait_res = xTaskNotifyWait(SSPI_TRANSFER_DONE_BIT, SSPI_TRANSFER_DONE_BIT, &return_bits, pdMS_TO_TICKS(timeout_ms));
+  BaseType_t wait_res = xTaskNotifyWaitIndexed(SSPI_NOTIFY_INDEX, SSPI_TRANSFER_DONE_BIT, SSPI_TRANSFER_DONE_BIT, &return_bits, pdMS_TO_TICKS(timeout_ms));
   dev->waiting_task = NULL;
   if (wait_res) {
     ESP_LOGV(TAG, "tx finished");
