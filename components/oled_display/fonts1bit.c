@@ -127,7 +127,8 @@ int	fnt_writeStr(const char *text, short x, short y, const Font *font) {
 
 int FONT_printStr(const Font *font, const char *text, tBox box, tTextAlign align, unsigned short color, unsigned short bgcol) {
   int ccnt, fntw;
-  //fnt_calc_colors(color, bgcol);
+  bool px_off = color == 0;
+  (void)(bgcol);  // ununed for single bit "color" displays
   tClipArea clip    = { 0, box.right - box.left + 1, 0, box.bottom - box.top + 1 };
   tBox      borders = { 0, 0, 0, 0 };
   uint8_t xpos = box.left, ypos = box.top;
@@ -177,20 +178,20 @@ int FONT_printStr(const Font *font, const char *text, tBox box, tTextAlign align
 
   borders.left = xpos - box.left;
   if (borders.top > 0) {
-    SSD1306_FillRect(box.left, box.top, box.right - box.left + 1, borders.top, bgcol != 0);
+    SSD1306_FillRect(box.left, box.top, box.right - box.left + 1, borders.top, px_off);
   }
   if (borders.left > 0) {
-    SSD1306_FillRect(box.left, box.top + borders.top, borders.left, fdisp_height, bgcol != 0);
+    SSD1306_FillRect(box.left, box.top + borders.top, borders.left, fdisp_height, px_off);
   }
 
-  ccnt = fnt_writeClipped(text, &xpos, ypos, box.right, &clip, font, color == 0);
+  ccnt = fnt_writeClipped(text, &xpos, ypos, box.right, &clip, font, px_off);
 
   borders.right = box.right - xpos + 1;
   if (borders.right > 0) {
-    SSD1306_FillRect(xpos, box.top + borders.top, borders.right, fdisp_height, bgcol != 0);
+    SSD1306_FillRect(xpos, box.top + borders.top, borders.right, fdisp_height, px_off);
   }
   if (borders.bottom > 0) {
-    SSD1306_FillRect(box.left, box.bottom - borders.bottom + 1, box.right - box.left + 1, borders.bottom, bgcol != 0);
+    SSD1306_FillRect(box.left, box.bottom - borders.bottom + 1, box.right - box.left + 1, borders.bottom, px_off);
   }
 
   return ccnt;

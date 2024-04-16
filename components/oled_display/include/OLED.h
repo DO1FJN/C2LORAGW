@@ -19,6 +19,7 @@ typedef struct {
   char      		text[TEXT_MAX_CHARS];	// holding the UTF-8 string
   tTextAlign  	align;
   tBox	      	box;
+  unsigned char pixel;
   const Font *	font;
 } tTextObj;
 

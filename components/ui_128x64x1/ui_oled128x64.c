@@ -33,9 +33,9 @@
 #define UI_TASK_PRIORITY        4
 
 
-#define UI_UPDATE_MODE          0x0001
-#define UI_UPDATE_FREQ          0x0002
-#define UI_UPDATE_STATE         0x0004
+#define UI_UPDATE_MODE          0x0002
+#define UI_UPDATE_FREQ          0x0004
+#define UI_UPDATE_STATE         0x0008
 
 #define UI_UPDATE_RX_RSSI       0x0010
 #define UI_UPDATE_RX_HEADER     0x0020
@@ -51,37 +51,37 @@ static const char *state_str[] = {
 
 static tTextObj FreqDisp = {
   .font  = &font_Hack_13x24, .align = taLEFTBTM,
-  .color = 1, .bgcol = 0,
+  .pixel = 1,
   .box   = { .left = 0, .top = 0, .right = 110, .bottom = 18 }    // numbers only 16px
 };
 
 static tTextObj StateInfoDisp = {
 .font  = &font_Hack_09x17, .align = taLEFTTOP,
-.color = 1, .bgcol = 0,
+.pixel = 1,
 .box   = { .left = 111, .top = 0, .right = 127, .bottom = 12 }
 };
 
 static tTextObj FreqInfoDisp = {
   .font  = &font_Hack_09x17, .align = taCENTER,
-  .color = 1, .bgcol = 0,
+  .pixel = 1,
   .box   = { .left = 111, .top = 13, .right = 127, .bottom = 25 }
 };
 
 static tTextObj ModeDisp = {
   .font  = &font_Hack_09x17, .align = taLEFTBTM,
-  .color = 1, .bgcol = 0,
+  .pixel = 1,
   .box   = { .left = 0, .top = 24, .right = 110, .bottom = 39 }
 };
 
 static tTextObj RxCallsignDisp = {
   .font  = &font_Hack_16x29, .align = taCENTERTOP,
-  .color = 1, .bgcol = 0,
+  .pixel = 1,
   .box   = { .left = 0, .top = 24, .right = 127, .bottom = 47+3 }
 };
 
 static tTextObj RxInfoDisp = {
   .font  = &font_Hack_09x17, .align = taCENTERBTM,
-  .color = 1, .bgcol = 0,
+  .pixel = 1,
   .box   = { .left = 0, .top = 48+3, .right = 127, .bottom = 63 }
 };
 
@@ -135,12 +135,16 @@ void C2LORA_ui_notify_rx_rssi(int8_t rssi, int8_t snr, int8_t signal) {
 
 
 static void ui_update_task(void *thread_data) {
-  uint32_t notify_value;
   vTaskDelay(pdMS_TO_TICKS(50));
   C2LORA_ui_notify_freq_change(C2LORA_get_frequency(), C2LORA_get_freqshift(), C2LORA_get_state());
   C2LORA_ui_notify_mode_change(C2LORA_get_mode());
+
   while (1) {
-    if (xTaskNotifyWait(-1, -1, &notify_value, pdMS_TO_TICKS(15000))) {
+
+    uint32_t   notify_value     = 0;
+    BaseType_t got_notification = xTaskNotifyWait(0, 0xffffffffUL, &notify_value, pdMS_TO_TICKS(15000));
+
+    if (got_notification == pdPASS) {
       ESP_LOGD(TAG, "update flags: %04lXh", notify_value);
 
       if (notify_value & UI_UPDATE_MODE) {
@@ -158,16 +162,18 @@ static void ui_update_task(void *thread_data) {
       }
       if (notify_value & UI_UPDATE_RX_RSSI) {
         OLED_writeTextbox(&RxInfoDisp);
-      }
-      OLED_Update();
-
+      }      
     } else {
       OLED_clearTextbox(&RxCallsignDisp);
       OLED_clearTextbox(&RxInfoDisp);
       OLED_writeTextbox(&ModeDisp);  
-      OLED_Update();
     }
-  }
+
+    OLED_Update();
+    vTaskDelay(pdMS_TO_TICKS(40));          // slowdown max update rate
+
+  } // ehliw forever
+
 }
 
 
@@ -178,44 +184,3 @@ esp_err_t ui_Start(void) {
   ESP_RETURN_ON_ERROR(err, TAG, "no control task created.");
   return ESP_OK;
 }
-
-
-/*
-#ifdef TFT_HOST
-  tTextObj ProdDisp = {
-    .font  = &font_HackBig40sspace,  .align = taCENTERBTM,
-    .color = COLOR_WHITE, .bgcol = COLOR_BLUE,
-    .box   = { .left = 0, .top = 0, .right = 319, .bottom = 79 }
-  };
-#endif
-
-#ifdef TFT_HOST
-  if (TFT_Init() != ESP_OK) {
-    ESP_LOGE(TAG, "TFT init fails");
-  }
-#endif
-
-#if TFT_HOST==SX126X_HOST  
-  vTaskDelay(10);
-#endif
-
-
-#ifdef TFT_HOST  
-
-  //INI_apply_configuration(default_wifi, strlen(default_wifi));
-#if TFT_HOST==SX126X_HOST  
-  vTaskDelay(pdMS_TO_TICKS(20));
-#endif
-
-  if (sspi_device_select(TFT_HOST, TFT_DEVICE_NUM) != ESP_OK) {
-    ESP_LOGE(TAG, "error sel. display");
-  }
-
-  TFT_ClearAll();
-//  TFT_FillRect(40, 40, TFT_X_SIZE / 2, TFT_Y_SIZE / 2, COLOR_RED);
-//  vTaskDelay(100); 
-  ESP_LOGD(TAG, "writing test-text...!");
-  TFT_write(&ProdDisp, "C2LoraGW");
-  TFT_SetBrightness(100);
-#endif
-*/

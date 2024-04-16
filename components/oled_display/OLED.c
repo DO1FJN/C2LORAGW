@@ -107,9 +107,9 @@ void OLED_writeTextbox(const tTextObj *t) {
   if (oled_clipBox(&clippedBox)) {
 #ifdef DEFAULT_FONT     
     const Font *font = t->font == NULL? DEFAULT_FONT: t->font;
-    FONT_printStr(font, t->text, clippedBox, t->align, t->color, t->bgcol);
+    FONT_printStr(font, t->text, clippedBox, t->align, t->pixel, 0);
 #else
-    if (t->font) FONT_printStr(t->font, t->text, clippedBox, t->align, t->color, t->bgcol);
+    if (t->font) FONT_printStr(t->font, t->text, clippedBox, t->align, t->pixel, 0);
 #endif            
   } // fi clipped
   oled_unlock();
@@ -120,7 +120,7 @@ void OLED_clearTextbox(const tTextObj *t) {
   if ((t == NULL) || !oled_lock()) return;   
   tBox clippedBox = t->box;
   if (oled_clipBox(&clippedBox)) {
-    SSD1306_FillRect(clippedBox.left, clippedBox.top, clippedBox.right - clippedBox.left + 1, clippedBox.bottom - clippedBox.top + 1, t->bgcol != 0);
+    SSD1306_FillRect(clippedBox.left, clippedBox.top, clippedBox.right - clippedBox.left + 1, clippedBox.bottom - clippedBox.top + 1, t->pixel == 0);
   }
   oled_unlock();
 }

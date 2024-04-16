@@ -17,8 +17,11 @@
 #include "hardware.h"
 #include "compiler.h"
 
+#if OLED_IF_TYPE==0
+#include "driver/i2c.h" // dodo: get rid of this driver, needed INTR, transaction only with one START+STOP...
+#elif OLED_IF_TYPE==1
 #include "s_spi.h"
-#include "driver/i2c.h"
+#endif
 
 #include "esp_err.h"
 #include "esp_log.h"
@@ -137,8 +140,7 @@ esp_err_t SSD1306_Init(unsigned char no_of_lines) {
 #if OLED_IF_TYPE==0
   err = i2c_master_write_to_device(SSD1306_I2C_PORT, SSD1306_SLAVE_ADDR, generic_init_seq, sizeof(generic_init_seq), SSD1306_I2C_WAIT_TICKS);
   memset(i2c_link_buffer, 0, sizeof(i2c_link_buffer));
-#endif
-#if OLED_IF_TYPE==1
+#elif OLED_IF_TYPE==1
 // tbd
 #endif
   
