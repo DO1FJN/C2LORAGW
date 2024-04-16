@@ -1187,8 +1187,10 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
   char recipient[8];
 
   esp_err_t   err;
-  TickType_t  task_timeout   = portMAX_DELAY;
+  TickType_t  task_timeout   = portMAX_DELAY;  
   uint32_t    rx_timeout_us  = (C2LORA_DVOICE_FRAMELEN_MS + C2LORA_MAX_RXGAP_MS) * 1000;
+  int64_t     rx_packet_start;
+  int32_t     rx_interpkt_dur_us = -1;
   uint32_t    symbol_time_us;
   uint32_t    preamble_time_us;
   uint32_t    firstdat_time_us;
@@ -1234,7 +1236,8 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
 
   ESP_LOGD(TAG, "calculated preamble = %luµs, symboltime %luµs, firstdat airtime %luµs, cyclic data %luµs", preamble_time_us, symbol_time_us, firstdat_time_us, cydata_time_us);
 
-  cyclic_data_to = (cydata_time_us + 10000) / (configTICK_RATE_HZ * 100);
+  cyclic_data_to  = (cydata_time_us + 10000) / (configTICK_RATE_HZ * 100);
+  rx_packet_start = esp_timer_get_time();
 
   xEventGroupClearBits(lora->events, C2LORA_EVENT_RECONFIGURE|C2LORA_EVENT_SX126X_INT);
 
@@ -1244,7 +1247,8 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
     } else {
       C2LORA_ui_notify_state_change(C2S_RX);
     }
-  }
+  } // fi UI
+
   ESP_LOGD(TAG, "receiving %s (%d)", (lora->state >= RX_NOSYNC? "start": "canceled"), lora->state);
 
   while (lora->state >= RX_NOSYNC) {
@@ -1352,13 +1356,15 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
         lora->state         = RX_PREAMBLE;
         lora->rd_offset     = 0;
         lora->pkt_framecnt  = 0;
-        lora->udp_stream_id = C2LORA_TX_STREAM_ID;
-        rxpacket_ptr   = rx_packet;  // reset packet position
+        lora->udp_stream_id = C2LORA_TX_STREAM_ID;  // set a non -1 value to mark this stream is "used" (prevents HAMdLNK to transmit)
+        rxpacket_ptr        = rx_packet;            // reset packet position
+        rx_interpkt_dur_us  = lora->pkt_start_time - rx_packet_start; // duration between 2 packets in µs
+        rx_packet_start     = lora->pkt_start_time; // copy timestamp (set within GIPIO IRQ handler)
 #if CONFIG_USE_TEST_BITPATTERN
         memset(rx_packet, 0x22, sizeof(rx_packet)); 
 #endif
 
-// ToDo in Funktionen auslagern.  
+// ToDo using external functions (more flexible)
         if ((lora->dva->streamid == -1) && (lora->dva->codec_type != 255)) {
           c2lora_create_audioout_stream(lora->dva);
         } // fi
@@ -1389,8 +1395,9 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
         sx126x_set_dio_irq_params(lora->ctx, SX126X_IRQ_PREAMBLE_DETECTED, C2LORARX_INTMASK, 0x00, 0x00);
         sx126x_unlock();
         if (udp_fwd_enable) C2LORA_stop_HAMdLNK(FWDrtp);
-        lora->udp_stream_id = 0;
+        lora->udp_stream_id = 0;        
         task_timeout = portMAX_DELAY;
+        with_header  = false;     // detection of a new stream with a defective first byte after a single-packet transmission ends
         lora->state  = RX_NOSYNC;
         continue;
       } // fi
@@ -1449,7 +1456,7 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
 
       if (rxpkt_is_empty) { //lora->state == RX_PREAMBLE
         uint8_t pkt_len = lora->def->bytes_per_packet;
-        with_header = C2LORA_is_header(rx_packet[0]);
+        with_header = C2LORA_is_header(with_header, rx_packet[0], rx_interpkt_dur_us);
         if (with_header) {
           pkt_len += lora->def->bytes_per_header;
           rx_timeout_us = (C2LORA_WHEADER_FRAMELEN_MS + C2LORA_MAX_RXGAP_MS) * 1000;
@@ -2046,6 +2053,7 @@ esp_err_t C2LORA_perform_PER_test(unsigned int no_of_transmits, unsigned int tx_
         int32_t process_time_us = esp_timer_get_time() - lorarx->pkt_start_time;
         if (process_time_us > 580000L) {
           ESP_LOGW(TAG, "timeout RX");
+          with_header   = false;     // detection of a new stream with a defective first byte after a single-packet transmission ends
           lorarx->state = RX_DONE;
         }
         sx126x_lock();
@@ -2060,7 +2068,7 @@ esp_err_t C2LORA_perform_PER_test(unsigned int no_of_transmits, unsigned int tx_
         sx126x_unlock();
         if ((rxpacket_ptr == rx_packet) || (lorarx->update_pkt_params)) {
           uint8_t pkt_len = lorarx->def->bytes_per_packet;
-          with_header = C2LORA_is_header(rx_packet[0]);
+          with_header = C2LORA_is_header(with_header, rx_packet[0], 0);
           if (with_header) {
             pkt_len += lorarx->def->bytes_per_header;
             ESP_LOGD(TAG, "packet has header");

@@ -27,12 +27,13 @@ This source file belongs to project 'C2LoRaGW'.
 static const char *TAG = "C2LORAcore";
 
 #define C2LORA_TIMEOUT_580            ((C2LORA_WHEADER_FRAMELEN_MS+24)*64)
-//#define C2LORA_TIMEOUT_480            ((C2LORA_DVOICE_FRAMELEN_MS+16)*64)
+
+#define C2LORA_MAX_JITTER_US          12500   // because of the freeRTOS 10ms tick there are some 10ms gaps that can occur... 
+                                              // w/o there is only a jitter of max 2 symbol length approx. 4000µs
+
 
 static const uint8_t sx126x_start_hdr[4] = { SX126X_CMD_START_TX, 0, (uint8_t)(C2LORA_TIMEOUT_580 >> 8), (uint8_t)(C2LORA_TIMEOUT_580 >> 0) };
 static const uint8_t sx126x_clear_sta[3] = { SX126X_CMD_CLEAR_IRQSTA, (uint8_t)(SX126X_IRQ_ALL >> 8), (uint8_t)SX126X_IRQ_ALL };
-
-//static const uint8_t sx126x_start_txd[4] = { SX126X_CMD_START_TX, 0, (uint8_t)(C2LORA_TIMEOUT_480 >> 8), (uint8_t)(C2LORA_TIMEOUT_480 >> 0) };
 
 
 
@@ -82,13 +83,23 @@ void C2LORA_prepare_cydata(uint8_t *cydata, uint8_t d_length) {
 }
 
 
-bool C2LORA_is_header(uint8_t first_byte) {
+bool C2LORA_is_header(bool last_was_header, uint8_t first_byte, int32_t interpkt_dur_us) {
   uint8_t header_byte = first_byte & ~C2LORA_FRAME_STARTBYTE;
+  switch (first_byte) {            // header byte w/o error: no doubt its a '33h' or 'CCh'
+  case C2LORA_FRAME_STARTBYTE:
+    return false;
+  case (uint8_t)(~C2LORA_FRAME_STARTBYTE):
+    return true;
+  } // hctiws
+  // if the last packet was a header or the packet begins at teh expected time -> return false
+  // RX task must set "with_header" to false after a stream ends, to get the first header of a new transmission
+  if ( (last_was_header) || (abs(interpkt_dur_us - (C2LORA_DVOICE_FRAMELEN_MS * 1000L) < C2LORA_MAX_JITTER_US)) ) {
+    return false;
+  }
   first_byte &= C2LORA_FRAME_STARTBYTE;
   int header_bits = __builtin_popcount(header_byte);
   return (header_bits == 4)  || (header_bits > __builtin_popcount(first_byte));
 }
-
 
 
 sx126x_errors_mask_t SX126x_GetDeviceError(const tsx126x_ctx *ctx) {

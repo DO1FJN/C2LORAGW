@@ -127,8 +127,7 @@ esp_err_t C2LORA_init_sx126x(tLoraStream *lora, const tsx126x_config *cfg);
 
 void C2LORA_prepare_cydata(uint8_t *cydata, uint8_t d_length);
 
-bool C2LORA_is_header(uint8_t first_byte);
-
+bool C2LORA_is_header(bool last_was_header, uint8_t first_byte, int32_t interpkt_dur_us);
 
 esp_err_t C2LORA_set_standby(tLoraStream *lora, sx126x_standby_cfgs_t mode);
 
