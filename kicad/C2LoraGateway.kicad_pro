@@ -45,7 +45,7 @@
         "silk_text_thickness": 0.15,
         "silk_text_upright": false,
         "zones": {
-          "min_clearance": 0.0
+          "min_clearance": 0.39999999999999997
         }
       },
       "diff_pair_dimensions": [
@@ -70,7 +70,7 @@
         "clearance|161125000|107525000|11c05aea-b4d1-4cf6-a08f-9995cbda05f1|89afff5c-b9ba-4687-b216-ed397b1512ad",
         "clearance|161125000|108125000|13c9d569-224c-4262-8be4-afbed11a348e|11c05aea-b4d1-4cf6-a08f-9995cbda05f1",
         "courtyards_overlap|163583332|116400001|3378382b-56f9-409b-8bb8-4cc54f3e9b84|732bbc65-b35e-4fe6-869a-1c96ce21bb30",
-        "courtyards_overlap|96434188|73599999|fbe29816-735a-4710-b71c-e2dd4963028f|40ebb41a-1924-49be-9f0e-547d9480c4b5",
+        "courtyards_overlap|96434188|73599999|40ebb41a-1924-49be-9f0e-547d9480c4b5|fbe29816-735a-4710-b71c-e2dd4963028f",
         "hole_clearance|165245000|103950000|408f009e-775f-4bb3-b367-b11252691f5c|169889ba-741f-4467-80d8-b596a89c34cb",
         "hole_clearance|165245000|103950000|408f009e-775f-4bb3-b367-b11252691f5c|6a9c9384-acbf-42d5-9ad0-6206f0f9f40c",
         "hole_clearance|165245000|110050000|ca238503-20ba-4a8e-926f-e4fe83b51ced|c4c7151e-3c00-4915-9c5d-93bd68e5e436",
