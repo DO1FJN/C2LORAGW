@@ -1043,7 +1043,7 @@ ToDo log sbuf_get_unsend_size(audio_out) for every trigger, find out why buffer 
 }
 
 
-float localaudio_get_volume_dBm(void) {
+float localaudio_get_volume_dB(void) {
   float volumef = 10 * log10(((double)volume_raw / CONFIG_AUDIOOUT_DEFAULT_0DB));
   return volumef;
 }
@@ -1055,7 +1055,7 @@ void localaudio_set_volume_dBm4(signed char volume) {
 }
 
 
-float localaudio_get_micgain_dBm(void) {
+float localaudio_get_micgain_dB(void) {
   float micgainf = 10 * log10(((double)mic_gain / CONFIG_AUDIOIN_DEFAULT_0DB));
   return micgainf;
 }

@@ -1253,7 +1253,7 @@ static struct {
 
 static int wifista_console(int argc, char **argv) {
   const char *wifista_cmd_list[] = {
-    "mode", "ssid", "presharedkey", "identity", "username", "password", "info", "set", NULL
+    "mode", "ssid", "presharedkey", "identity", "username", "password", "info", "set", "enable", NULL
   };
   esp_err_t err;
   char *config_text;
@@ -1267,7 +1267,7 @@ static int wifista_console(int argc, char **argv) {
   assert(wifista_args.sel->count == 1);
   int selection = str_index(wifista_args.sel->sval[0], wifista_cmd_list);
   if (selection < 0) {
-    printf("unknow command '%s'\n", wifista_args.sel->sval[0]);
+    printf("unknown command '%s'\n", wifista_args.sel->sval[0]);
     return 1;
   }
   if ((wifista_args.val != NULL) && (wifista_args.val->count == 1)) {
@@ -1306,6 +1306,19 @@ static int wifista_console(int argc, char **argv) {
     }
     wifista_param_set = 0;
     break;
+  case 8: // enable (on/off)
+    if (str_getOnOff(value)) {
+      printf("enable wifi station mode...\n");
+      err = WiFiSTA_init(NULL);
+      if (err == ESP_OK) WiFiSTA_start();	// re
+      if (wifi_mode != WiFimode_off) {
+        printf("wifi is not configured.\n");
+      }
+    } else {
+      printf("disable wifi station mode...\n");
+      WiFiSTA_shutdown();
+    }
+    break;
 
   default: // 0..5 -> use
     err = nvs_open(WIFI_namespace, NVS_READWRITE, &wifi_config_hnd);
@@ -1323,7 +1336,7 @@ static int wifista_console(int argc, char **argv) {
 
 
 void register_wifista(void) {
-  wifista_args.sel = arg_str1(NULL, NULL, "<info|mode|ssid|presharedkey|identity|username|password|set>", "change Wifi settings");
+  wifista_args.sel = arg_str1(NULL, NULL, "<info|mode|ssid|presharedkey|identity|username|password|set|enable>", "change Wifi settings");
   wifista_args.val = arg_str0(NULL, NULL, "<value>", "optional parameter value");
   wifista_args.end = arg_end(2);
   const esp_console_cmd_t cmd = {

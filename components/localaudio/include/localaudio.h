@@ -39,8 +39,8 @@ void    localaudio_handle_stream(int stream_id);
 
 bool    localaudio_create_buffer(tdvstream *dva, int size_ms);
 
-float   localaudio_get_volume_dBm(void);
+float   localaudio_get_volume_dB(void);
 void    localaudio_set_volume_dBm4(signed char volume);
 
-float   localaudio_get_micgain_dBm(void);
+float   localaudio_get_micgain_dB(void);
 void    localaudio_set_micgain_dBm4(signed char micgain);

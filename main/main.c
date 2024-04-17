@@ -1124,10 +1124,10 @@ static int localget_console(int argc, char **argv) {
     localget_hostname(value);
     break;  
   case 8: // volume
-    printf("volume = %6.2fdB\n", localaudio_get_volume_dBm());    
+    printf("volume = %6.2fdB\n", localaudio_get_volume_dB());    
     break;
   case 9: // micgain
-    printf("micgain = %6.2fdB\n", localaudio_get_micgain_dBm());    
+    printf("micgain = %6.2fdB\n", localaudio_get_micgain_dB());    
     break;
   } // hctiws
 
