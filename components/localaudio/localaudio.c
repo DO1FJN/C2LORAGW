@@ -4,7 +4,15 @@
  *  Created on: 01.02.2024
  *     Project: Lora-Gateway
  *      Author: Jan Alte, DO1FJN
- */
+
+This source file belongs to project 'C2LoRaGW'.
+(c) 2024, DO1FJN (Jan Alte)
+
+Unless required by applicable law or agreed to in writing, this
+software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied.
+
+*/
 
 #include "localaudio.h"
 
@@ -12,7 +20,8 @@
 
 #include "s_buffer.h"
 #include "i2s_loop.h"
-#include "max98357a.h"
+#include "output_codecs.h"
+#include "input_codecs.h"
 
 #include "HAMdLNK.h"
 #include "codec2.h"
