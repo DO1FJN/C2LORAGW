@@ -137,6 +137,13 @@ static tWindow ssd1306_op_win;
 
 esp_err_t SSD1306_Init(unsigned char no_of_lines) {
   esp_err_t err;
+#if (defined OLED_RST_Pin) && (OLED_RST_Pin != GPIO_NU_NC)
+  gpio_set_level(OLED_RST_Pin, 0);
+  gpio_set_direction(OLED_RST_Pin, GPIO_MODE_OUTPUT);
+  vTaskDelay(2);
+  gpio_set_level(OLED_RST_Pin, 1);
+#endif
+
 #if OLED_IF_TYPE==0
   err = i2c_master_write_to_device(SSD1306_I2C_PORT, SSD1306_SLAVE_ADDR, generic_init_seq, sizeof(generic_init_seq), SSD1306_I2C_WAIT_TICKS);
   memset(i2c_link_buffer, 0, sizeof(i2c_link_buffer));
