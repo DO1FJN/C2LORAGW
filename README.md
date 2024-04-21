@@ -18,17 +18,18 @@ the same frequency half-duplex. There is an option to add a 2nd transceiver to i
 Because the fact that not ready-to-use LoRa based radios exist, this project contains also audio in- and output using cheap I2S
 modules plus display an simple UI on a TFT or OLED display.
 
-Project description [here](documentation/project_description.md)
+More information is in the [wiki](https://github.com/DO1FJN/C2LORAGW/wiki)
 
 ### Hardware
 
-A ready to use 80x50mm PCB *"C2LORAGW"* containing an E22-400M30S (or M33S) and a ESP32-S3 module is available. All spare IO's are
-routed to a 2.54mm pin header for adding extensions. This board can be powered by an USB 2A charger or an LiPo / LiIon 1S battery.
-To simplify the design this board doesn't contain a charger or power switch (can be added on a separate board).
+The project is preconfigured to run on a Heltec WiFi LoRa V3 board (433-510MHz).
 
-This PCB is sized to fit into an Hammond or Fisher aluminum case, but also have 4 mounting holes (M3).
+A ready to use 80x50mm PCB *"C2LORAGW"* containing an E22-400M30S (or M33S) and a ESP32-S3 module is available as a KiCad
+project: All spare IO's are routed to a 2.54mm pin header for adding extensions. This board can be powered by an USB 2A charger
+or an LiPo / LiIon 1S battery. To simplify the design this board doesn't contain a charger or power switch jet (can be added on
+a separate board). This PCB is sized to fit into an Hammond or Fisher aluminum case, but also have 4 mounting holes (M3).
 
-Detailed hardware description [here](documentation/hardware.md)
+More information is in the [wiki](https://github.com/DO1FJN/C2LORAGW/wiki)
 
 ### Firmware
 
@@ -38,11 +39,13 @@ other opensource: Codec2 for example and the SemTech sx126x driver.
 
 ## Getting Started
 
-First: READ all available documentation (it is not much). See "documentation" folder.
+First: READ all available documentation (it is not much). See "documentation" folder and use the
+[wiki](https://github.com/DO1FJN/C2LORAGW/wiki).
 
-Get some compatible hardware (currently supported off-the-shelf products: C2LORAGW, LiliGo T_Deck^*) or build some.
+Get some compatible hardware or build some:
 
-(*) = my T-Deck still not work (Lora32 module fails).
+Get an ESP32-S3 wroom based dev-kit or similar. Connect a SX1262 or SX1268 based Lora module (equipped for UHF!) to it. There is
+almost no constrains in pinning the SPI or the additional GPIO pins needed.
 
 ### Flash Precompiled Firmware
 
@@ -50,11 +53,20 @@ Get some compatible hardware (currently supported off-the-shelf products: C2LORA
 2. Download the precompiled firmware image (ZIP file with a few binary images)
 3. Flash the stuff
 
+### Get Repository
+
+* Install VisualStudio Code, add the EspressIf toolchain + esp-idf (or just the bare EspressIf stuff)
+* Clone the repository from here (code button)
+* copy one of the provided sdkconfig to "sdkconfig"
+* Modify the GPIO and other settings in ./components/boards/breadboard.h or create a new board definition file for your target
+* Config the project...  `idf.py menuconfig` (select the proper console for your target)
+* Build + flash it... `idf.py flash`
+
 tbd
 
 ### First Connection
 
-Run the EspressIf monitor or something similar (Putty) to see C2LORAGW boot. After this, it shows a command prompt. Using typed
+Run the EspressIf monitor or something similar (Putty) to see C2LORA boot. After this, it shows a command prompt. Using typed
 commands to establish a wifi connection (station mode) or change C2LORA settings, hostname, callsign and so on.
 
 ### Calibration
@@ -89,27 +101,3 @@ All settings (frequency, mode, txpower and offset) are saved with the command
 
 `c2lora save`
 
-
-## Other And Custom Targets
-
-### Build Hardware
-
-Get an ESP32-S3 wroom based dev-kit or similar. Connect a SX1262 or SX1268 based Lora module (equipped for UHF!) to it. There is
-almost no constrains in pinning the SPI or the additional GPIO pins needed.
-
-### Get Repository
-
-* Install VS code with the EspressIf toolchain + esp-idf (or just the bare EspreeIf stuff)
-* Clone the repository from here: https://github.com/DO1FJN/C2LORAGW
-* copy one of the provided sdkconfig to "sdkconfig"
-* Modify the GPIO and other settings in ./components/boards/breadboard.h or create a new board definition file for your target
-* Config the project...  `idf.py menuconfig` (select the proper console for your target)
-* Build + flash it... `idf.py flash`
-
-tdb
-
-### LilyGo T-Deck
-
-My T-Deck LORA32 module doesn't work (XOSC startup error), so i stalled the development for this for now.
-
-tbd

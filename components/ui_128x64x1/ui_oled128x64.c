@@ -32,6 +32,13 @@
 #define UI_TASK_STACK_SIZE      3072
 #define UI_TASK_PRIORITY        4
 
+#define DEFAULT_CLEAR_RXINFO_TO  15
+
+#if CONFIG_DISPLAY_GOES_DARK_S < DEFAULT_CLEAR_RXINFO_TO
+#define UI_REMOVE_RXINFO_TO     (CONFIG_DISPLAY_GOES_DARK_S * configTICK_RATE_HZ)
+#else
+#define UI_REMOVE_RXINFO_TO     (DEFAULT_CLEAR_RXINFO_TO * configTICK_RATE_HZ)
+#endif
 
 #define UI_UPDATE_MODE          0x0002
 #define UI_UPDATE_FREQ          0x0004
@@ -134,15 +141,23 @@ void C2LORA_ui_notify_rx_rssi(int8_t rssi, int8_t snr, int8_t signal) {
 }
 
 
+#define ui_reset_turnoff_time(t)  t = xTaskGetTickCount() + (CONFIG_DISPLAY_GOES_DARK_S * configTICK_RATE_HZ)
+
 static void ui_update_task(void *thread_data) {
+  bool oled_turned_off = false;
+  TickType_t turn_off_time, wait_notify_timeout;
+
   vTaskDelay(pdMS_TO_TICKS(50));
   C2LORA_ui_notify_freq_change(C2LORA_get_frequency(), C2LORA_get_freqshift(), C2LORA_get_state());
   C2LORA_ui_notify_mode_change(C2LORA_get_mode());
 
-  while (1) {
+  ui_reset_turnoff_time(turn_off_time);
+  wait_notify_timeout = UI_REMOVE_RXINFO_TO;
 
+  while (1) {
+   
     uint32_t   notify_value     = 0;
-    BaseType_t got_notification = xTaskNotifyWait(0, 0xffffffffUL, &notify_value, pdMS_TO_TICKS(15000));
+    BaseType_t got_notification = xTaskNotifyWait(0, 0xffffffffUL, &notify_value, wait_notify_timeout);
 
     if (got_notification == pdPASS) {
       ESP_LOGD(TAG, "update flags: %04lXh", notify_value);
@@ -162,15 +177,35 @@ static void ui_update_task(void *thread_data) {
       }
       if (notify_value & UI_UPDATE_RX_RSSI) {
         OLED_writeTextbox(&RxInfoDisp);
-      }      
+      }
+      
+      ui_reset_turnoff_time(turn_off_time);
+      
     } else {
       OLED_clearTextbox(&RxCallsignDisp);
       OLED_clearTextbox(&RxInfoDisp);
-      OLED_writeTextbox(&ModeDisp);  
+      OLED_writeTextbox(&ModeDisp);
+#if CONFIG_DISPLAY_GOES_DARK_S > DEFAULT_CLEAR_RXINFO_TO
+      wait_notify_timeout = (CONFIG_DISPLAY_GOES_DARK_S * configTICK_RATE_HZ) - UI_REMOVE_RXINFO_TO;
+#endif
     }
-
+    
     OLED_Update();
     vTaskDelay(pdMS_TO_TICKS(40));          // slowdown max update rate
+
+#if CONFIG_DISPLAY_GOES_DARK_S > 0
+    if (xTaskGetTickCount() >= turn_off_time) {
+      wait_notify_timeout = portMAX_DELAY;
+      // turn off display
+      OLED_Enable(false);
+      oled_turned_off = true;
+    } else if (oled_turned_off) {
+      wait_notify_timeout = UI_REMOVE_RXINFO_TO;
+      // turn on display
+      OLED_Enable(true);
+      oled_turned_off = false;
+    }
+#endif
 
   } // ehliw forever
 

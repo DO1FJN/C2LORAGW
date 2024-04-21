@@ -38,6 +38,8 @@ typedef struct {
 
 esp_err_t	OLED_Init(void);
 
+esp_err_t OLED_Enable(bool on_off);
+
 esp_err_t OLED_InverseDisp(bool on_off);
 
 void	OLED_SetContrast(unsigned char value);

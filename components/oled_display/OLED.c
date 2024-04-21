@@ -55,6 +55,16 @@ esp_err_t OLED_Init(void) {
 }
 
 
+esp_err_t OLED_Enable(bool on_off) {
+  esp_err_t err = ESP_ERR_NOT_FINISHED;
+  if (oled_lock()) {
+    err = SSD1306_OnOff(on_off);
+  }
+  oled_unlock();
+  return err;
+}
+
+
 esp_err_t OLED_InverseDisp(bool on_off) {
   esp_err_t err = ESP_ERR_NOT_FINISHED;
   if (oled_lock()) {
