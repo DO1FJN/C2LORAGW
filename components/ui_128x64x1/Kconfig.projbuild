@@ -1,12 +1,12 @@
 
 menu "User Interface (OLED Display)"
+  depends on TARGET_C2LOARAGW_V1 || TARGET_HELTEC_WIFILORA_V3
 
   config DISPLAY_GOES_DARK_S
-    int "display off timeout (s)"
+    int "display off timeout (s)" 
     range   0 1200
     default 15
     help
       "duration after the display goes dark (1-1200 seconds; 0 = feature turnd off)"
-
     
 endmenu
