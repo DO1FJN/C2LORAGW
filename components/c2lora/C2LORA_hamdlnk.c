@@ -74,9 +74,6 @@ static struct netconn *outconn = NULL;          // port for outgoing UDP packets
 static uint16_t own_area_code;
 static char     own_locator[6];
 
-static tRecorderHandle *last_recording;         // keep the last record accessible
-
-
 static void hamdlnk2audio_task(void *config_data);
 
 static void hamdlnk_udprx_timeout(TimerHandle_t timer);
@@ -116,6 +113,8 @@ static void log_ip_4_host(const ip_addr_t *ipaddr, const char *hostname, bool ca
 #if CONFIG_LOG_DEFAULT_LEVEL > 3
     char ip_addr_str[128];
     ip_addr_str[0] = 0;
+
+
     ipaddr_ntoa_r(ipaddr, ip_addr_str, sizeof(ip_addr_str));
     ESP_LOGD(TAG, "got %s IP: %s for '%s'", cached? "cached": "", ip_addr_str, hostname);
 #endif
@@ -169,6 +168,7 @@ static void hamdlnk2audio_task(void *config_data) {
   ip_addr_t TXTO;
 
   struct udp_pcb *mypcb[MAX_LISTEN_CONNECTIONS];
+  struct netconn *myconn = NULL;
   const tHAMdLNK_network_config *config = config_data;
   const char *     outgoing_prim = NULL;
   uint16_t         outgoing_prim_port = 0;
@@ -225,11 +225,12 @@ static void hamdlnk2audio_task(void *config_data) {
 
   set_start_us(strt);
   while(1) {
-    
-    if (outconn == NULL) {
-      outconn = netconn_new(NETCONN_UDP); //_IPV6 geht nicht auf IP4
-    }
 
+    outconn = NULL;
+    if (myconn == NULL) {
+      myconn = netconn_new(NETCONN_UDP); //_IPV6 geht nicht auf IP4
+    }
+    
     ESP_LOGI(TAG, "wait network connect...");
     while (LAN_wait4event(CONNECTED_BIT, -1) == 0);
 
@@ -254,13 +255,14 @@ static void hamdlnk2audio_task(void *config_data) {
     if ((outgoing_prim_port > 0) && (outgoing_prim != NULL)) {
       bool ip_is_set = set_target_ip_by_name(&TXTO, outgoing_prim);
       if (ip_is_set) {
-        err = netconn_connect(outconn, &TXTO, outgoing_prim_port);
+        err = netconn_connect(myconn, &TXTO, outgoing_prim_port);
         if (err != ERR_OK) {
           ESP_LOGE(TAG, "netconn_connect() returns %d", err);
-          netconn_delete(outconn);
-          outconn = NULL;
+          netconn_delete(myconn);
+          myconn = NULL;
         } else {
           ESP_LOGI(TAG, "stream to '%s' (outgoing UDP)", outgoing_prim);
+          outconn = myconn;
         }
       } else {
         ESP_LOGW(TAG, "no outgoing connection (no IP)");
@@ -278,8 +280,9 @@ static void hamdlnk2audio_task(void *config_data) {
 
     ESP_LOGI(TAG, "disconnected");
 
-    if (outconn != NULL) {
-      netconn_disconnect(outconn);
+    outconn = NULL;
+    if (myconn != NULL) {
+      netconn_disconnect(myconn);      
     }
     for (int c = 0; c < rx_connections; c++) {
       if (mypcb[c] == NULL) continue;
@@ -289,8 +292,9 @@ static void hamdlnk2audio_task(void *config_data) {
     } // rof
     
   } // ehliw forever
-  
-  if (outconn != NULL) netconn_delete(outconn);
+
+  outconn = NULL;
+  if (myconn != NULL) netconn_delete(myconn);
   for (int c = 0; c < MAX_LISTEN_CONNECTIONS; c++) {
     if (mypcb[c] == NULL) continue;
     LOCK_TCPIP_CORE();
@@ -329,7 +333,7 @@ static uint32_t c2lora_finish_udp_tx(tLoraStream *lora, void *arg) {
   }
   lora->dva = NULL;
   if (lora->rec != NULL) {
-    last_recording = lora->rec;
+    finish_record(lora->rec);
     lora->rec = NULL;
   }
   ESP_LOGD(TAG, "Fwd HAMdLNK done.");
@@ -890,90 +894,3 @@ void C2LORA_stop_HAMdLNK(trtp_data *udp_rtp) {
     UTX_transmit(udp_rtp);
   } // fi valid pkt
 }
-
-
-
-/*
-
-Playback Functions
-
-*/
-
-tRecorderHandle *C2LORA_get_last_record(void) {
-  return last_recording;
-}
-
-
-
-/*
-  c2lora_finish_rec_tx() is called from C2LORA control task queued from C2LORA_handle_encoded() processing the "LAST_FRAME"
-*/
-static uint32_t c2lora_finish_rec_tx(tLoraStream *lora, void *arg) {
-  esp_err_t err;
-  ESP_RETURN_ON_FALSE(lora != NULL, ESP_ERR_INVALID_ARG, TAG, "no argument for udp-finisher call");
-  lora->udp_stream_id = 0;
-  lora->dva = NULL;
-  ESP_LOGD(TAG, "REC playback done.");
-  return (uint32_t) err;
-}
-
-
-esp_err_t C2LORA_send_record(tRecorderHandle *rec, tLoraStream *lora) {
-
-  if (rec == NULL) return ESP_ERR_NO_MEM;
-
-  tdvstream *udp_dva = NULL;
-
-  // we found an DV stream (compatible speech data) within the packet - create a stream struct
-  int frame_len_ms;
-  udp_dva = (tdvstream *) calloc(1, sizeof(tdvstream));
-  ESP_RETURN_ON_FALSE(udp_dva != NULL, ESP_ERR_NO_MEM, TAG, "no memory for stream struct");
-
-  udp_dva->streamid = -1;
-  udp_dva->srate    = 8000; // all modes uses 8kHz.
-  udp_dva->samples_per_frame = (8 * C2LORA_DVOICE_FRAMELEN_MS) / lora->def->dv_frames_per_packet;
-  udp_dva->bits_per_frame    = sf_get_subframe_bits(lora->def->codec_type);
-  udp_dva->bytes_per_frame   = (udp_dva->bits_per_frame + 7) >> 3;
-
-  frame_len_ms = C2LORA_DVOICE_FRAMELEN_MS / lora->def->dv_frames_per_packet;
-
-  if (frame_len_ms != (U32)udp_dva->samples_per_frame * 1000 / udp_dva->srate) {
-    ESP_LOGW(TAG, "frame size mismatch. garbled output!");
-  } // fi something is wrong!
-
-  udp_dva->codec_type = record_get_codec_type(rec);
-  udp_dva->buf        = record_get_buffer(rec);
-  udp_dva->flags      = DVSTREAM_FLAG_KEEP_BUFFER;  // don't free this buffer after playback
-
-  if (udp_dva->buf == NULL) {
-    ESP_LOGW(TAG, "no record.");
-    return ESP_FAIL;
-  }
-
-//  sbuf_update_time(udp_dva->buf, 0);
-//  sbuf_set_steppos(udp_dva->buf, 0);
-
-  //C2LORA_upd_header(lora->header, sender, sender_len, recipient, recipient_len, KOS_HOTSPOT, true);
-
-  if (C2LORA_task_run_cmd(lora, c2lora_start_tx_udp, udp_dva, false) != ESP_OK) {
-    ESP_LOGE(TAG, "can't start retransmit");
-  }
-
-  rewind_recording(rec);
-
-  ESP_LOGD(TAG, "retransmit %d bytes speech data", sbuf_get_unsend_size(udp_dva->buf));
-  lora->finish_tx = c2lora_finish_rec_tx; // was set to udp_stop_function  @c2lora_start_tx_udp
-  lora->rec       = NULL;
-  C2LORA_handle_encoded(udp_dva, lora);   // starts, refilling with TXdone triggered function
-
-  do {
-
-    vTaskDelay(pdMS_TO_TICKS(40));
-    
-  } while (sbuf_get_unsend_size(udp_dva->buf) >= udp_dva->bytes_per_frame);
-
-  xEventGroupSetBits(lora->events, C2LORA_EVENT_TRANSMIT_FINI);
-  ESP_LOGD(TAG, "retransmission done.");
-  return ESP_OK;  
-}
-

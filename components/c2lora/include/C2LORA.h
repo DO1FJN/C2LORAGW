@@ -36,6 +36,7 @@ main API file for accessing the C2LORA UHF link
 #define C2LORA_MAX_OFFSET_HZ          (+32000)
 
 #define CQCALL_DESTINATION            "CQCQCQ"
+#define ECHO_REPLAY_DESTINATION       "ECHO"
 
 
 typedef enum {
@@ -96,6 +97,11 @@ esp_err_t C2LORA_set_calibration(bool active, bool rx_module);
 
 esp_err_t C2LORA_set_freq_offset(int freq_offset_hz, bool rx_module);
 
+esp_err_t C2LORA_save_config(void);
+
+void      C2LORA_print_status(void);
+
+
 esp_err_t C2LORA_get_local_header(char *callsign, char *destination, tKindOfSender *kos);
 esp_err_t C2LORA_get_local_header_additionals(unsigned short *area_code, char *locator);
 
@@ -104,13 +110,5 @@ esp_err_t C2LORA_start_continuous_rx(bool enable);
 esp_err_t C2LORA_start_tx_microphone(void);
 
 esp_err_t C2LORA_end_tx_microphone(void);
-
-esp_err_t C2LORA_start_rx_speaker(void);
-
-esp_err_t C2LORA_end_rx_speaker(void);
-
-esp_err_t C2LORA_save_config(void);
-
-void      C2LORA_print_status(void);
 
 esp_err_t C2LORA_retransmit_last(void);

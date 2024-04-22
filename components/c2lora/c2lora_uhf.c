@@ -64,6 +64,13 @@ Report:
 #define C2LORA_2ND_STREAM
 #endif
 
+#if (defined RECEIVING_INDICATOR_LED) && (RECEIVING_INDICATOR_LED != GPIO_NUM_NC)
+#define RECEIVING_INDICATOR(on_off)  gpio_set_level(RECEIVING_INDICATOR_LED, on_off)
+#else
+#define RECEIVING_INDICATOR(dummy)
+#endif
+
+
 typedef struct {
   tLoraCmdFunc    cmd_fct;
   void *          cmd_arg;
@@ -99,6 +106,7 @@ static uint8_t DMA_ATTR   rx_packet[256];
 
 static void C2LORA_control_task(void *thread_data);
 
+static void c2lora_handle_record(tLoraStream *lora, const char *callsign, const char *recipient, bool fromHAMdLNK);
 
 __weak void C2LORA_ui_notify_mode_change(tC2LORA_mode new_mode) { }
 __weak void C2LORA_ui_notify_freq_change(int32_t freq_hz, int32_t freq_sft, tC2LORA_state state) { }
@@ -662,13 +670,15 @@ static uint32_t c2lora_finish_audio_tx(tLoraStream *lora, void *arg) {
   } else {
     localaudio_end_stream(lora->dva, true);
   }
+/*
   // Bug: condition if end_stream is very slow... esp. in Modes with low or none cydata!
   ESP_LOGD(TAG, "wait TXdone...");
   for (int max_delay = 5; max_delay > 0; max_delay--) {
     vTaskDelay(3);
     if (lora->dva->streamid == -1) break;
   } // rof
-  ESP_LOGD(TAG, "TXdone.");
+*/
+  ESP_LOGD(TAG, "Audio-TX done");
   return (uint32_t) ESP_OK;
 }
 
@@ -823,23 +833,16 @@ static void C2LORA_handle_rx_cydata(tLoraStream *lora, const uint8_t *cydata) {
 
 
 
-static inline bool C2LORA_adjust_preamble(tLoraStream *lora, int32_t done_after_start_us) {
-  if (lora->pkt_params[SX126X_PKT_LEN_BYTEPOS] != lora->def->bytes_per_packet) {    // longer / header packet?
-    lora->pkt_params[SX126X_PKT_LEN_BYTEPOS] = lora->def->bytes_per_packet;
-    lora->pkt_params[SX126X_PKT_PRE_BYTEPOS] = lora->def->default_preamble;
-    lora->update_pkt_params = true;
-  } else {
-    uint8_t corrected_preabmle = lora->def->default_preamble;
-    // Todo more filter jitter
-    if (done_after_start_us < lora->p.min_pkt_end_time) {
-      corrected_preabmle--;
-    } else if (done_after_start_us > lora->p.max_pkt_end_time) {
-      corrected_preabmle++;
-    }
-    lora->update_pkt_params = lora->pkt_params[SX126X_PKT_PRE_BYTEPOS] != corrected_preabmle;
-    lora->pkt_params[SX126X_PKT_PRE_BYTEPOS] = corrected_preabmle;
+static inline bool c2lora_adjust_preamble(tLoraStream *lora, int32_t done_after_start_us) {
+  uint8_t corrected_preabmle = lora->def->default_preamble;
+  // Todo more filter jitter
+  if (done_after_start_us < lora->p.min_pkt_end_time) {
+    corrected_preabmle--;
+  } else if (done_after_start_us > lora->p.max_pkt_end_time) {
+    corrected_preabmle++;
   }
-  ESP_LOGD(TAG, "TX #%02lx done after %6ldµs, p=%d, ofs=%02xh", lora->frame_cnt / lora->def->dv_frames_per_packet, done_after_start_us, lora->pkt_params[SX126X_PKT_PRE_BYTEPOS], lora->pkt_offset);
+  lora->update_pkt_params |= lora->pkt_params[SX126X_PKT_PRE_BYTEPOS] != corrected_preabmle;
+  lora->pkt_params[SX126X_PKT_PRE_BYTEPOS] = corrected_preabmle;
   return lora->update_pkt_params;
 }
 
@@ -849,12 +852,13 @@ void C2LORA_handle_encoded(tdvstream *dva, void *userdata) {
   Union64 frame_shifted[C2LORA_SHIFT_REG_CNT];
   uint8_t last_frame_buffer[((SF_MAX_BITS_PER_FRAME+15) >> 3) + C2LORA_MAX_CYDATA_LENGTH];    //s build the last frame witdh cydata and startbyte for a single SPI buffer write
   tLoraStream *lora   = (tLoraStream *) userdata; //&lora_stream;
-  tLoraTxState state  = lora->state; // local copy because GPIO ISR can alter this
   uint8_t frame_bytes = dva->bytes_per_frame;
   uint8_t frame_bits  = dva->bits_per_frame;
+  tLoraTxState lstate = lora->state;
+  bool tx_frames      = (lstate > TX_SEND_HEADER) && (lstate <= TX_LAST_FRAME);
+  
   uint8_t bit_shift;  
   bool first_pktframe;
-  bool tx_enabled = true;
   int32_t done_after_start_us = -1; // we got an packet full excact after this duration (from start)
   
   esp_err_t err = ESP_OK;
@@ -865,37 +869,48 @@ void C2LORA_handle_encoded(tdvstream *dva, void *userdata) {
 
   U16 frame_cnt = unsend_enc_bytes / dva->bytes_per_frame;
 
-  ESP_LOGV(TAG, "%lu / %lu (+ %uf)", lora->frame_cnt, lora->frame_himark, frame_cnt);
+  ESP_LOGV(TAG, "%lu / %lu (+ %uf) state: %d", lora->frame_cnt, lora->frame_himark, frame_cnt, lstate);
 
   if (frame_cnt == 0) {
-    ESP_LOGW(TAG, "no encoded data"); 
+    ESP_LOGW(TAG, "no encoded data");
     return;
   }
+
   if ((lora->frame_himark - lora->frame_cnt) < frame_cnt) {
-    ESP_LOGW(TAG, "SX126x buffer runs full at frame %lu, %u frames pending", lora->frame_cnt, frame_cnt);
+    if ((lora->dva->flags & DVSTREAM_FLAG_IS_CANNED) == 0) {  // prints warning only, ith this is not canned data (from microphone or UDP)
+      ESP_LOGW(TAG, "SX126x buffer runs full at frame %lu, %u frames pending", lora->frame_cnt, frame_cnt);
+    }
     frame_cnt = lora->frame_himark - lora->frame_cnt;
     if (frame_cnt == 0) return;
-  } // fi not enoght space
+  } // fi not enough space
+
+  switch(lstate) {
+  case TX_FRAME_DONE:   // after current transmissen the SX126x buffer is empty
+    lora->state = TX_SEND_FRAME;
+    break;
+  case TX_FRAME_GAP:    // we not sending because no buffered digital voice was present at pkt end
+    sx126x_lock();
+    C2LORA_clear_irq_mask(lora);
+    tx_frames = C2LORA_begin_transmit(lora) == ESP_OK;
+    sx126x_unlock();
+    ESP_LOGD(TAG, "TX gap");    
+    break;
+  default:
+    break;
+  } // hctiws
+
+  first_pktframe = lora->pkt_framecnt == 0;
+
+  if (first_pktframe) {
+    ESP_LOGD(TAG, "TX #%02lx encoded data after %ldµs", lora->frame_cnt / lora->def->dv_frames_per_packet, (int32_t)(esp_timer_get_time() - lora->pkt_start_time));
+  } // fi
 
   if (frame_bytes > sizeof(frame_shifted)) {
     frame_bytes = sizeof(frame_shifted);
     ESP_LOGW(TAG, "odd frame_len (to big, %dbits)", frame_bits);
   } // fi
 
-  if (state == TX_FRAME_GAP) {    // we not sending because no buffered digital voice was present at pkt end
-    sx126x_lock();
-    C2LORA_clear_irq_mask(lora);
-    tx_enabled = C2LORA_begin_transmit(lora) == ESP_OK;
-    sx126x_unlock();
-    ESP_LOGD(TAG, "TX gap");
-  } // fi gap
-
-  first_pktframe = lora->pkt_framecnt == 0;
-  if ((state != TX_LAST_FRAME) && tx_enabled) lora->state = TX_SEND_FRAME; // set new state (we are sending speech frames now)
-  if (first_pktframe) {
-    ESP_LOGD(TAG, "TX #%02lx encoded data after %ldµs", lora->frame_cnt / lora->def->dv_frames_per_packet, (int32_t)(esp_timer_get_time() - lora->pkt_start_time));
-  } // fi
-
+  // main action: pack frame_cnt frames from the stream-buffer into the SX126x packet buffer:
   for (int frame_no = frame_cnt; frame_no > 0; frame_no--, frame_ptr += dva->bytes_per_frame) {
     const uint8_t *frame_ptr_i = frame_ptr;
     uint8_t frame_pkt_bytes_i  = frame_bytes;
@@ -959,40 +974,35 @@ void C2LORA_handle_encoded(tdvstream *dva, void *userdata) {
 #if CONFIG_USE_TEST_BITPATTERN
     lora->frame_cnt++;
 #endif
-  } // rof multiple frames
+  } // rof pack frames into SX126x packet buffer
 
+  // we are recording this transmission? copy frames to the record buffer
   if (lora->rec != NULL) {
     record_append_dvframe(lora->rec, frame, frame_cnt);
   }
+  // we a done with frame_cnt frames - mark these as processed (moves unsend ptr)
   sbuf_unsend_block_processed(dva->buf, frame_cnt * dva->bytes_per_frame);
 #ifndef CONFIG_USE_TEST_BITPATTERN
   lora->frame_cnt += frame_cnt;
 #endif
 
-  if (done_after_start_us != -1) {
-    C2LORA_adjust_preamble(lora, done_after_start_us); // todo get returned value
-    if (done_after_start_us > ((C2LORA_WHEADER_FRAMELEN_MS+24) * 1000L )) {
-      lora->state = TX_LAST_FRAME;
-      ESP_LOGW(TAG, "TX timeout!");
-    }
-  } // fi set once
-
   if (err) {
     ESP_LOGE(TAG, "can't write to SX126X buffer");
   }
 
-  if (first_pktframe) {
-
+  if (tx_frames && first_pktframe) {
     ESP_LOGD(TAG, "TX first %lldµs", esp_timer_get_time() - lora->pkt_start_time);
-   
   } // fi first frame processed
 
-  if (lora->pkt_framecnt >= lora->def->dv_frames_per_packet) {    // we ending exact after a completed packet
-    if ((state >= TX_SEND_HEADER) && (state != TX_LAST_FRAME)) {
-      lora->state = TX_FRAME_DONE;
-    } else {
-      ESP_LOGD(TAG, "TX finished");
-    }
+  if ((lstate == TX_SEND_FRAME) && (done_after_start_us != -1)) {
+    bool adjusted = c2lora_adjust_preamble(lora, done_after_start_us); // todo get returned value
+
+    ESP_LOGD(TAG, "TX #%02lx done after %6ldµs, p=%d, ofs=%02xh", lora->frame_cnt / lora->def->dv_frames_per_packet, done_after_start_us, lora->pkt_params[SX126X_PKT_PRE_BYTEPOS], lora->pkt_offset);
+
+  } // fi set once
+
+  if (lstate == TX_LAST_FRAME) {
+    ESP_LOGD(TAG, "sending last packet, %d frames leftover!", lora->pkt_framecnt);
   }
 
 } // end handle encoded speech data
@@ -1000,7 +1010,7 @@ void C2LORA_handle_encoded(tdvstream *dva, void *userdata) {
 
 
 
-static bool C2LORA_add_frame_2_stream(tdvstream *dva, const uint8_t *frame, uint8_t bit_shift, trtp_data *rtp) {
+static bool C2LORA_add_frame_2_stream(tdvstream *dva, const uint8_t *frame, uint8_t bit_shift, tRecorderHandle *rec, trtp_data *rtp) {
   Union64 frame_shifted[C2LORA_SHIFT_REG_CNT];
   const uint8_t *frame_ptr = frame;
   if ((dva == NULL) || (dva->buf == NULL)) return false;
@@ -1028,36 +1038,15 @@ static bool C2LORA_add_frame_2_stream(tdvstream *dva, const uint8_t *frame, uint
     frame_ptr = frame_shifted->u8;
   } // fi
 
-  sbuf_fillnext(dva->buf, frame_ptr, 1);
+  sbuf_fillnext(dva->buf, frame_ptr, 1);  
 #if CONFIG_USE_TEST_BITPATTERN
   return false;
 #endif
+  if (rec != NULL) {
+    record_append_dvframe(rec, frame_ptr, 1);
+  }
   return rtp != NULL? UTX_handle_encoded_dvframe(frame_ptr, rtp): false;
 }
-
-
-
-static void c2lora_rx_finisher(tdvstream *dva) {
-  ESP_LOGD(TAG, "RX DVstream #%d ends now", dva->streamid);
-  dva->streamid = -1;
-}
-
-
-static esp_err_t c2lora_create_audioout_stream(tdvstream *dva) {            
-  ESP_RETURN_ON_FALSE(dva != NULL, ESP_ERR_INVALID_ARG, TAG, "can't create audio-out: DVstream is null");
-  int codec2_mode = SF_CODEC2_get_mode(dva->codec_type);
-  localaudio_create_codec2_outputstream(dva, codec2_mode, dva->bytes_per_frame, (tfinished_stream_fct)c2lora_rx_finisher);
-  if (dva->streamid >= 0) {
-      sbuf_update_time(dva->buf, xTaskGetTickCount());
-      sbuf_set_steppos(dva->buf, 0);
-  } else {
-    //sx126x_set_dio_irq_params(lora->ctx, SX126X_IRQ_PREAMBLE_DETECTED, C2LORARX_INTMASK, 0x00, 0x00);
-    ESP_LOGE(TAG, "create_audiostream: localaudio denied");    
-  }
-  return dva->streamid < 0? ESP_FAIL: ESP_OK;
-}
-
-
 
 
 
@@ -1077,10 +1066,11 @@ static inline esp_err_t c2lora_transmit_funct(tLoraStream *lora) {
   esp_err_t  err;
   int64_t    start_time;
   int32_t    done_after_start_us;  
-  TickType_t wait_packet_timeout = pdMS_TO_TICKS(C2LORA_WHEADER_FRAMELEN_MS+60);  // first timeout is 4 header...
-
-  uint8_t    sx126x_set_baseadr[3] = { SX126X_CMD_SET_BASEADR, 0, 0 };
-  uint32_t   packet_transmitted = 0;
+  TickType_t wait_packet_timeout   = pdMS_TO_TICKS(C2LORA_WHEADER_FRAMELEN_MS+60);  // first timeout is 4 header...
+  uint32_t   packet_transmitted    = 0;
+  uint8_t    sx126x_set_baseadr[3] = { 
+    SX126X_CMD_SET_BASEADR, lora->def->bytes_per_header + lora->def->bytes_per_packet, 0
+  };
 
   sx126x_lock();
   err = C2LORA_begin_transmit(lora);
@@ -1111,10 +1101,10 @@ static inline esp_err_t c2lora_transmit_funct(tLoraStream *lora) {
 
     if (tx_bits & C2LORA_EVENT_TRANSMIT_FINI) { // ending transmission request...
       lora->state = TX_LAST_FRAME;
-    }
+      ESP_LOGD(TAG, "end of transmission was requested.");
+    } //
 
-    if (tx_bits & C2LORA_EVENT_SX126X_INT) {
-      sx126x_set_baseadr[1] = lora->pkt_offset; // update to a new base adress (the next packet is written to)
+    if (tx_bits & C2LORA_EVENT_SX126X_INT) {      
       sx126x_lock();
       C2LORA_clear_irq_mask(lora);
       sx126x_hal_fast_cmd(lora->ctx, sx126x_set_baseadr, 3);
@@ -1123,43 +1113,63 @@ static inline esp_err_t c2lora_transmit_funct(tLoraStream *lora) {
         lora->update_pkt_params = sx126x_hal_fast_cmd(lora->ctx, lora->pkt_params, SX126X_SIZE_PKT_PARAMS) != ESP_OK;   
       } // fi
       switch (lora->state) {
+      case TX_FRAME_DONE:    // fi continue with next packet transmission
+        if ((lora->dva == NULL) || (sbuf_get_unsend_size(lora->dva->buf) < lora->dva->bytes_per_frame)) {
+          lora->state = TX_FRAME_GAP;
+          break;
+        } // fi nothing left to send...
+        // fall through
+      case TX_SEND_HEADER:
+        lora->state = TX_SEND_FRAME;
+        // fall through
       case TX_SEND_FRAME:
         sx126x_hal_fast_cmd(lora->ctx, sx126x_start_txd, sizeof(sx126x_start_txd));
-        break;
-      case TX_FRAME_DONE:    // fi continue with next packet transmission
-        lora->state = TX_FRAME_GAP;
+        sx126x_set_baseadr[1] += lora->def->bytes_per_packet; // update to a new base adress (the next packet is written to)       
         break;
       case TX_LAST_FRAME:
         break;
       default:
+        lora->state = TX_LAST_FRAME;
         break;
       } // hctiws
       start_time = esp_timer_get_time();
       done_after_start_us  = start_time - lora->pkt_start_time;
-      lora->pkt_start_time = start_time;    
+      lora->pkt_start_time = start_time;
+      ESP_LOGD(TAG, "TXdone event after %luµs (state: %d)", done_after_start_us, lora->state);    
       sx126x_hal_wait_busy(lora->ctx);
       sx126x_unlock();
 
-      if (packet_transmitted == 0) {
-        c2lora_calc_no_frames_fit(lora); // recalculate no of frams that will fit within the SX126x buffer
-        wait_packet_timeout = pdMS_TO_TICKS(C2LORA_DVOICE_FRAMELEN_MS+20);
-      } // fi the very-first packet
+      if (lora->state != TX_LAST_FRAME) {   // this packet was not the last one...
+        if (packet_transmitted == 0) {
+          c2lora_calc_no_frames_fit(lora);  // recalculate no of frams that will fit within the SX126x buffer
+          wait_packet_timeout = pdMS_TO_TICKS(C2LORA_DVOICE_FRAMELEN_MS+20);
+        } // fi the very-first packet
+        lora->frame_himark += lora->def->dv_frames_per_packet;
+        if ((lora->dva != NULL) && (sbuf_get_unsend_size(lora->dva->buf) >= lora->dva->bytes_per_frame)) {
+          C2LORA_handle_encoded(lora->dva, lora);
+        }
+        // ToDo Was ist mit Mode 9 mit 222 bytes packetgröße?
+        if ((lora->pkt_offset == sx126x_set_baseadr[1]) && (lora->wr_offset <= 8)) {
+          lora->state = TX_FRAME_DONE;          
+          if ((lora->dva->flags & DVSTREAM_FLAG_IS_CANNED)) {
+            xEventGroupSetBits(lora->events, C2LORA_EVENT_TRANSMIT_FINI);
+            ESP_LOGD(TAG, "playback recording ends after this packet...");
+          } else { // fi canned digital speech ended
+            ESP_LOGD(TAG, "no more packet data!");          
+          }
+        }
+      } // fi the stream must go on...
       packet_transmitted++;
 
-      lora->frame_himark += lora->def->dv_frames_per_packet;
-      if ((lora->dva != NULL) && (sbuf_get_unsend_size(lora->dva->buf) >= lora->dva->bytes_per_frame)) {
-        C2LORA_handle_encoded(lora->dva, lora);      
-      }
-      ESP_LOGD(TAG, "TXdone event after %luµs", done_after_start_us);
-    }
+    } // fi TXdone event
 
     if (tx_bits & (C2LORA_EVENT_RECONFIGURE|C2LORA_EVENT_TERMINATE)) {
       lora->state = TX_LAST_FRAME;
       err = ESP_OK;
     }
 
-    if ((tx_bits & C2LORA_ALL_EVENTS) == 0) {      
-      ESP_LOGW(TAG, "TX timeout, INTR pin = %d", gpio_get_level(lora->intr_pin));
+    if ((tx_bits & C2LORA_ALL_EVENTS) == 0) {
+      ESP_LOGW(TAG, "TX timeout, INTR pin = %d, to = %lums, state = %d", gpio_get_level(lora->intr_pin), wait_packet_timeout * 10, lora->state);
       lora->state = TX_LAST_FRAME;
       err = ESP_ERR_TIMEOUT;
     }
@@ -1172,9 +1182,32 @@ static inline esp_err_t c2lora_transmit_funct(tLoraStream *lora) {
   sx126x_lock();
   err = C2LORA_finish_transmit(lora);
   sx126x_unlock();
-  xEventGroupClearBits(lora->events, C2LORA_EVENT_TRANSMIT_FINI);
-  ESP_LOGI(TAG, "%lu packets transmitted", packet_transmitted);
+  xEventGroupClearBits(lora->events, C2LORA_EVENT_TRANSMIT_FINI);  
+  ESP_LOG_LEVEL_LOCAL((err != ESP_OK? ESP_LOG_WARN: ESP_LOG_INFO), TAG, "transmission ended, %lu packets transmitted", packet_transmitted);
   return err;
+}
+
+
+
+
+static void c2lora_rx_finisher(tdvstream *dva) {
+  ESP_LOGD(TAG, "RX DVstream #%d ends now", dva->streamid);
+  dva->streamid = -1;
+}
+
+
+static esp_err_t c2lora_create_audioout_stream(tdvstream *dva) {            
+  ESP_RETURN_ON_FALSE(dva != NULL, ESP_ERR_INVALID_ARG, TAG, "can't create audio-out: DVstream is null");
+  int codec2_mode = SF_CODEC2_get_mode(dva->codec_type);
+  localaudio_create_codec2_outputstream(dva, codec2_mode, dva->bytes_per_frame, (tfinished_stream_fct)c2lora_rx_finisher);
+  if (dva->streamid >= 0) {
+      sbuf_update_time(dva->buf, xTaskGetTickCount());
+      sbuf_set_steppos(dva->buf, 0);
+  } else {
+    //sx126x_set_dio_irq_params(lora->ctx, SX126X_IRQ_PREAMBLE_DETECTED, C2LORARX_INTMASK, 0x00, 0x00);
+    ESP_LOGE(TAG, "create_audiostream: localaudio denied");    
+  }
+  return dva->streamid < 0? ESP_FAIL: ESP_OK;
 }
 
 
@@ -1199,8 +1232,8 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
   EventBits_t rx_bits        = 0;        
   uint8_t *   rxpacket_ptr   = rx_packet;
   uint8_t     read_ahead_ofs = 0;
+  trtp_data * fwd_rtp        = NULL;
   bool        with_header    = false;
-  bool        udp_fwd_enable = false;
   bool udp_packet_ready4tx   = false;
 
   sx126x_hal_status_t s;
@@ -1288,7 +1321,7 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
 //          ESP_LOG_BUFFER_HEX_LEVEL(TAG, rx_packet, rxbuffer_status.pld_len_in_bytes, ESP_LOG_DEBUG);
 #endif
         for (; lora->pkt_framecnt < lora->def->dv_frames_per_packet; lora->pkt_framecnt++) {
-          udp_packet_ready4tx |= C2LORA_add_frame_2_stream(lora->dva, rx_packet + (lora->rd_offset >> 3), lora->rd_offset & 7, FWDrtp);
+          udp_packet_ready4tx |= C2LORA_add_frame_2_stream(lora->dva, rx_packet + (lora->rd_offset >> 3), lora->rd_offset & 7, lora->rec, fwd_rtp);
           lora->rd_offset += lora->dva->bits_per_frame;
           lora->frame_cnt++;
         } // fi
@@ -1337,17 +1370,11 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
         //if (rxbuffer_status.pld_len_in_bytes > 0) {
         //  ESP_LOG_BUFFER_HEX(TAG, rx_packet, rxbuffer_status.pld_len_in_bytes);
         //}
-        //ESP_LOGI(TAG, "high stack water mark is %u", uxTaskGetStackHighWaterMark(NULL));
+        //ESP_LOGV(TAG, "high stack water mark is %u", uxTaskGetStackHighWaterMark(NULL));
 
         // refresh IRQ-Status (new preable?)
-        
         // ??? maskiert? check
-#ifndef CONFIG_USE_TEST_BITPATTERN
-        if (udp_packet_ready4tx) {
-          if (udp_fwd_enable) UTX_transmit(FWDrtp);
-          udp_packet_ready4tx = false;
-        }
-#endif
+
       } // fi RXdone
 
       // *** PREAMBLE detected ***
@@ -1386,7 +1413,7 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
         ESP_LOGD(TAG, "awaits RXdone");
         task_timeout = pdMS_TO_TICKS(C2LORA_MAX_RXGAP_MS);
         continue;
-      } // fi TXdone int has firered...
+      } // fi RXdone int has firered...
       if ((lora->state == RX_DONE) || (rx_time >= rx_timeout_us)) { // we are done, no futher sync - disable RX
         ESP_LOG_LEVEL((lora->state == RX_DONE? ESP_LOG_DEBUG: ESP_LOG_WARN), TAG, "RX %s", (lora->state == RX_DONE? "ended": "timeout"));
         ESP_LOGV(TAG, "task stack high watermark=%u", uxTaskGetStackHighWaterMark(NULL));
@@ -1394,11 +1421,16 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
         sx126x_lock();
         sx126x_set_dio_irq_params(lora->ctx, SX126X_IRQ_PREAMBLE_DETECTED, C2LORARX_INTMASK, 0x00, 0x00);
         sx126x_unlock();
-        if (udp_fwd_enable) C2LORA_stop_HAMdLNK(FWDrtp);
+        C2LORA_stop_HAMdLNK(fwd_rtp);
+
+        if (lora->rec != NULL) {
+          c2lora_handle_record(lora, callsign, recipient, false);
+        } // fi end recording
         lora->udp_stream_id = 0;        
         task_timeout = portMAX_DELAY;
         with_header  = false;     // detection of a new stream with a defective first byte after a single-packet transmission ends
         lora->state  = RX_NOSYNC;
+        RECEIVING_INDICATOR(false);
         continue;
       } // fi
 
@@ -1438,10 +1470,6 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
         break;
       } // hctiws
 
-//        int symbols_received = (rx_time - preamble_time_us) / symbol_time_us;        
-//        int bytes_received_calc = ((symbols_received / (lora->def->mod.cr + 4)) * (lora->def->mod.sf << 2) >> 3) - rx_byte_offset;
-//        ESP_LOGD(TAG, "RX@%02xh Sym=%3d | %3d/%3dbytes of %3dmin", rx_byte_offset, symbols_received, bytes_received, bytes_received_calc, min_bytes_need);
-
       if (bytes_received < min_bytes_need) {
         continue;
       }
@@ -1471,6 +1499,7 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
         sx126x_lock();
         sx126x_set_dio_irq_params(lora->ctx, C2LORARX_INTMASK, C2LORARX_INTMASK, 0x00, 0x00);
         sx126x_unlock();
+        RECEIVING_INDICATOR(true);
         ESP_LOGD(TAG, "RX %s", (with_header? "has header": "new frame"));
       } // fi determine type of packet
 
@@ -1492,20 +1521,39 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
         if (header_ok) {
           uint16_t areacode;
           C2LORA_get_from_header(mode, rx_packet + 1, &areacode, locator, false);
-#ifndef CONFIG_USE_TEST_BITPATTERN    
-          udp_fwd_enable = C2LORA_start_HAMdLNK(FWDrtp, callsign, recipient, kos, areacode, locator) == ESP_OK;
-          if (!udp_fwd_enable) {
-            ESP_LOGW(TAG, "no UDP connection");
-          }              
+#ifndef CONFIG_USE_TEST_BITPATTERN
+#ifdef C2LORA_2ND_STREAM
+          tLoraStream *loratx = C2LORA_get_stream_4_transmit();
+          if ((loratx != lora) && (loratx->state >= TX_SEND_HEADER) && (loratx->state <= TX_LAST_FRAME)) {
+            // todo freq compare.
+            fwd_rtp   = NULL;
+            lora->rec = NULL;
+            ESP_LOGW(TAG, "receive own transmisson: no FWD, REC");            
+          } else {
 #endif
-        } else {
+          fwd_rtp = C2LORA_start_HAMdLNK(FWDrtp, callsign, recipient, kos, areacode, locator) == ESP_OK? FWDrtp: NULL;
+          if (fwd_rtp == NULL) {
+            ESP_LOGW(TAG, "no UDP connection");
+          }
+          err = create_record(&lora->rec, lora->dva->codec_type, (MAX_RECORDING_LEN_S * 1000 / C2LORA_DVOICE_FRAMELEN_MS) * lora->def->dv_frames_per_packet,
+            lora->dva->bytes_per_frame, lora->dva->samples_per_frame);
+          if (err != ESP_OK) {
+            ESP_LOGW(TAG, "no recording: %s", esp_err_to_name(err));
+          } else {
+            record_append_info(lora->rec, callsign, recipient);
+          }
+#ifdef C2LORA_2ND_STREAM
+          }
+#endif
+#endif
+        } else {  // header is not ok...
 
         }
         C2LORA_ui_notify_rx_header(header_ok, callsign, recipient, kos, was_repeated, area_code, locator);
 #if CONFIG_USE_TEST_BITPATTERN
         ESP_LOGD(TAG, "RX header (%d bits) received", lora->p.bits_header);
         ESP_LOG_BUFFER_HEX_LEVEL(TAG, rx_packet + 1, rx_byte_offset - 1, ESP_LOG_DEBUG);
-#endif            
+#endif
         if (!header_ok) {
           ESP_LOGW(TAG, "header data are corrupted!");
         }
@@ -1516,13 +1564,13 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
 
       if (rx_bit_offset >= (lora->rd_offset + lora->dva->bits_per_frame) ) {
         for (int frame_lastpos = rx_bit_offset - lora->dva->bits_per_frame;  (lora->pkt_framecnt < lora->def->dv_frames_per_packet) && (lora->rd_offset <= frame_lastpos);  lora->pkt_framecnt++) { 
-          udp_packet_ready4tx |= C2LORA_add_frame_2_stream(lora->dva, rx_packet + (lora->rd_offset >> 3), lora->rd_offset & 7, FWDrtp);
+          udp_packet_ready4tx |= C2LORA_add_frame_2_stream(lora->dva, rx_packet + (lora->rd_offset >> 3), lora->rd_offset & 7, lora->rec, fwd_rtp);
           lora->rd_offset += lora->dva->bits_per_frame;
           lora->frame_cnt++;
         } // rof multiple data@once          
 #if CONFIG_USE_TEST_BITPATTERN
         C2LORA_log_testpattern_from_buffer(lora->dva);
-#else  
+#else
         sbuf_update_time(lora->dva->buf, xTaskGetTickCount());
         localaudio_handle_stream(lora->dva->streamid);   // trigger audio task to process this output stream
 #endif
@@ -1532,12 +1580,14 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
         task_timeout = cyclic_data_to;
       } // fi done
 
-      if (udp_fwd_enable && udp_packet_ready4tx) {
-        UTX_transmit(FWDrtp); 
-      }
-      udp_packet_ready4tx = false;
-      
     } // fi task timeout (cyclic fetching data adead of TXdone)
+
+#ifndef CONFIG_USE_TEST_BITPATTERN
+    if (udp_packet_ready4tx && (fwd_rtp != NULL)) {
+      UTX_transmit(fwd_rtp);      
+    } // fi forward HAMdLNK
+#endif
+    udp_packet_ready4tx = false;
 
   } // ehliw RX
 
@@ -1672,13 +1722,132 @@ c2lora_task_shutdown:
 }
 
 
+/*
+
+Playback / Echo Functions
+
+*/
+
+
+
+/*
+  c2lora_finish_rec_tx() is called from C2LORA control task queued from C2LORA_handle_encoded() processing the "LAST_FRAME"
+*/
+static uint32_t c2lora_finish_rec_tx(tLoraStream *lora, void *arg) {
+  esp_err_t err;
+  ESP_RETURN_ON_FALSE(lora != NULL, ESP_ERR_INVALID_ARG, TAG, "no argument for udp-finisher call");
+  if (lora->dva) {
+    free(lora->dva);
+    lora->dva = NULL;
+  } // fi
+  lora->udp_stream_id = 0;
+  ESP_LOGD(TAG, "REC playback done.");
+  return (uint32_t) err;
+}
+
+
+/*
+  c2lora_start_tx_recording() is called from C2LORA control task queued from c2lora_handle_record() and others
+*/
+static uint32_t c2lora_start_tx_recording(tLoraStream *lora, void *arg) {
+  esp_err_t err;
+  uint32_t rec_length_bytes;
+  int      frame_len_ms;
+  tdvstream *rec_dva;
+
+  tRecorderHandle *rec = (tRecorderHandle *) arg;
+
+  if (rec == NULL) return ESP_ERR_NOT_FOUND;
+
+  if (lora->dva != NULL) {
+    ESP_LOGW(TAG, "a input stream is already in use for C2LORA");
+    return ESP_ERR_INVALID_STATE;
+  }
+  if (lora->state == LS_INACTIVE) {
+    ESP_LOGW(TAG, "lora is not active");
+    return ESP_ERR_INVALID_STATE;
+  }
+  tsimple_buffer *rec_buf = record_get_buffer(rec);
+
+  rewind_recording(rec);
+  rec_length_bytes = sbuf_get_unsend_size(rec_buf);
+
+  ESP_RETURN_ON_FALSE((rec_buf != NULL) && (rec_length_bytes >= 8), ESP_FAIL, TAG, "no recording or recording is empty (%lu bytes).", rec_length_bytes);
+
+  // we found an DV stream (compatible speech data) within the packet - create a stream struct
+
+  rec_dva = (tdvstream *) calloc(1, sizeof(tdvstream));
+  ESP_RETURN_ON_FALSE(rec_dva != NULL, ESP_ERR_NO_MEM, TAG, "no memory for stream struct");
+
+  rec_dva->codec_type = record_get_codec_type(rec);
+  rec_dva->buf        = rec_buf;
+  rec_dva->flags      = DVSTREAM_FLAG_IS_CANNED | DVSTREAM_FLAG_KEEP_BUFFER;  // don't free dva->buf buffer after playback! stop TX if nothing left in buffer.
+  rec_dva->streamid   = -1;
+  rec_dva->srate      = 8000; // all modes uses 8kHz.
+
+  rec_dva->samples_per_frame = (8 * C2LORA_DVOICE_FRAMELEN_MS) / lora->def->dv_frames_per_packet;
+  rec_dva->bits_per_frame    = sf_get_subframe_bits(rec_dva->codec_type);
+  rec_dva->bytes_per_frame   = (rec_dva->bits_per_frame + 7) >> 3;
+
+  frame_len_ms = C2LORA_DVOICE_FRAMELEN_MS / lora->def->dv_frames_per_packet;
+
+  if (frame_len_ms != (U32)rec_dva->samples_per_frame * 1000 / rec_dva->srate) {
+    ESP_LOGW(TAG, "frame size mismatch. garbled output!");
+  } // fi something is wrong!
+
+  // use local header
+  memcpy(lora->header, local_header, lora_stream.def->bytes_per_header);
+  
+  // but replaces recipient (test only, ECHO)
+  C2LORA_upd_recipient(lora->header, record_get_callsign(rec));
+  // Todo: set own callsign as recipient and use stored callsign as sender (if not an ECHO)
+
+  lora->dva       = rec_dva;
+  lora->rec       = NULL;
+  lora->finish_tx = c2lora_finish_rec_tx; // was set to udp_stop_function  @c2lora_start_tx_udp
+
+  ESP_LOGD(TAG, "playback %lu bytes speech data", rec_length_bytes);
+
+  sx126x_lock();
+  err = C2LORA_prepare_transmit(lora, false);
+  sx126x_unlock();
+  lora->p.min_pkt_end_time = (C2LORA_DVOICE_FRAMELEN_MS/2 - 40) * 1000; // don't care about high latency
+
+  C2LORA_handle_encoded(rec_dva, lora);   // starts, refilling with TXdone triggered function
+  return (uint32_t) err;
+}
+
+
+
+static void c2lora_handle_record(tLoraStream *lora, const char *callsign, const char *recipient, bool fromHAMdLNK) {
+  tRecorderHandle *rec;
+  if (lora == NULL) return;
+  rec = lora->rec;
+  lora->rec = NULL;
+  if (rec == NULL) return;
+  finish_record(rec);
+
+  tLoraStream *loratx = C2LORA_get_stream_4_transmit();
+
+  if (strncmp(recipient, ECHO_REPLAY_DESTINATION, sizeof(ECHO_REPLAY_DESTINATION)-1)==0) {
+    ESP_LOGD(TAG, "echo last reception (%.7s -> %.7s)...", callsign, recipient);
+
+    C2LORA_task_run_cmd(loratx, c2lora_start_tx_recording, rec, true);
+  } // fi echo 'recipient' cmd
+
+}
+
 
 esp_err_t C2LORA_retransmit_last(void)  {
-  tRecorderHandle *rec = C2LORA_get_last_record();
-  ESP_RETURN_ON_FALSE(rec != NULL, ESP_ERR_NO_MEM, TAG, "no recording.");
-
-  return C2LORA_send_record(rec, C2LORA_get_stream_4_transmit());
+  tRecorderHandle *rec = get_last_record();
+  ESP_RETURN_ON_FALSE(rec != NULL, ESP_ERR_NO_MEM, TAG, "no recording.");  
+  esp_err_t err = C2LORA_task_run_cmd(C2LORA_get_stream_4_transmit(), c2lora_start_tx_recording, rec, false);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "can't start retransmit");
+  }
+  return err;
 }
+
 
 
 esp_err_t C2LORA_read_registers_from(unsigned short addr) {
@@ -1690,6 +1859,12 @@ esp_err_t C2LORA_write_register_to(unsigned short addr, unsigned char value) {
 }
 
 
+
+/*
+
+Packet Error Rate Test function for two-SX126x module setup only
+
+*/
 
 
 static esp_err_t C2LORA_handle_rxheader(const tLoraStream *lora, const uint8_t *rawheader) {
