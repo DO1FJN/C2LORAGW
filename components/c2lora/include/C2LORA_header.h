@@ -37,6 +37,8 @@ tKindOfSender C2LORA_get_kos_byname(const char *value);
 
 esp_err_t C2LORA_upd_header(unsigned char *header, const char *callsign, int callsign_len, const char *recipient, int recipient_len, tKindOfSender kos, bool repeated);
 
+esp_err_t C2LORA_upd_recipient(unsigned char *header, const char *recipient);
+
 tKindOfSender C2LORA_decode_header(const unsigned char *header, char *callsign, char *recipient, bool *repeated);
 
 bool C2LORA_check_header(const unsigned char *header, int header_len);

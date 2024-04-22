@@ -129,6 +129,30 @@ esp_err_t C2LORA_upd_header(unsigned char *header, const char *callsign, int cal
 }
 
 
+esp_err_t C2LORA_upd_recipient(unsigned char *header, const char *recipient) {
+  Union16 crc;
+  int  recipient_len;
+  char buffer_6bit[14];
+  uint8_t kos = (header[10] & 0x0F) | 0x08;
+  ESP_RETURN_ON_FALSE(header != NULL, ESP_ERR_INVALID_ARG, TAG, "header is NULL");
+  ESP_RETURN_ON_FALSE(recipient != NULL, ESP_ERR_INVALID_ARG, TAG, "recipient is NULL");
+
+  unpack_6bit_to(buffer_6bit, header, sizeof(buffer_6bit)); // unpack 84bit
+
+  recipient_len = strnlen(recipient, 7);
+  for (int i=0; i < recipient_len; i++) {
+    buffer_6bit[i + 7] = get_6bit_char(recipient[i]);
+  }
+  pack_6bit_to(header, buffer_6bit, sizeof(buffer_6bit)); // pack to 84bit
+  header[10] |= kos;          // this header is only used for repeated messages - repeated set to true
+  crc.u16 = crc16_le(0, header, 11);    
+  header[11] = crc.u8[1];
+  header[12] = crc.u8[0];
+
+  return ESP_OK;
+}
+
+
 tKindOfSender C2LORA_decode_header(const unsigned char *header, char *callsign, char *recipient, bool *repeated) {
   char buffer_6bit[14];
   unpack_6bit_to(buffer_6bit, header, sizeof(buffer_6bit)); // unpack 84bit
