@@ -241,7 +241,6 @@ esp_err_t C2LORA_init_sx126x(tLoraStream *lora, const tsx126x_config *cfg) {
   ESP_LOGD(TAG, "set lora mod params");
   s = sx126x_set_lora_mod_params(lora->ctx, &lora->def->mod); // -> these are 3 separate I/Os (hal_write, read+write register within BUSY period)
   if (s) ESP_LOGE(TAG, "set lora mod params");
-  //DEBUG_SX126X_INFOS(lora->ctx);
 
   ESP_LOGD(TAG, "specific image calibration (430-440MHz)");
   //sx126x_cal(sx126x_ctx, SX126X_CAL_ALL & ~SX126X_CAL_IMAGE);
@@ -304,8 +303,6 @@ esp_err_t C2LORA_set_tx_power(tLoraStream *lora, signed char pwr_dBm) {
 #endif  
   s = sx126x_set_tx_params(lora->ctx, pwr_dBm, SX126X_RAMP_800_US); // ~ 8µs BUSY // max-ramp 3400µs
   if (s) ESP_LOGE(TAG, "set TX parameter");
-
-  DEBUG_SX126X_INFOS(lora->ctx);
   return s;
 }
 
@@ -333,7 +330,7 @@ sx126x_status_t C2LORA_handle_device_errors(tLoraStream *lora) {
 static void IRAM_ATTR C2LORA_TXdone_gpio_handler(void *arg) {
   tLoraStream *lora = (tLoraStream *) arg;
   xEventGroupSetBitsFromISR(lora->events, C2LORA_EVENT_SX126X_INT, NULL);
-  ESP_EARLY_LOGV(TAG, "TX done isr %d", lora->state); //, done_after_start_us);
+  ESP_EARLY_LOGV(TAG, "TXdone irq (%d)", lora->state);
 }
 
 
@@ -415,7 +412,13 @@ esp_err_t C2LORA_prepare_transmit(tLoraStream *lora, bool preamble_for_rt_speech
 
 inline esp_err_t C2LORA_begin_transmit(tLoraStream *lora) {
   esp_err_t err = sx126x_hal_fast_cmd(lora->ctx, sx126x_start_hdr, 4);
-  if (err == ESP_OK) lora->pkt_start_time = esp_timer_get_time();
+  if (err == ESP_OK) {
+    lora->pkt_start_time = esp_timer_get_time();
+    // reset packet length (updated just after TXdone IRQ+Event)
+    lora->update_pkt_params = lora->pkt_params[SX126X_PKT_LEN_BYTEPOS] != lora->def->bytes_per_packet;
+    lora->pkt_params[SX126X_PKT_LEN_BYTEPOS] = lora->def->bytes_per_packet;
+    lora->pkt_params[SX126X_PKT_PRE_BYTEPOS] = lora->def->default_preamble;
+  }
   return err;
 }
 
@@ -435,9 +438,7 @@ esp_err_t C2LORA_finish_transmit(tLoraStream *lora) {
   if (lora->freq_shift != 0) {
     ESP_LOGD(TAG, "set RX freq");
     s |= sx126x_set_rf_freq(lora->ctx, lora->frequency);  // needs ~40µs BUSY
-  }
-
-  ESP_LOG_LEVEL_LOCAL((s? ESP_LOG_WARN: ESP_LOG_INFO), TAG, "transmission ended.");
+  } // fi shift
   return s? ESP_FAIL: ESP_OK;
 }
 
@@ -532,7 +533,6 @@ esp_err_t C2LORA_prepare_receive(tLoraStream *lora, uint32_t *symbol_time, uint3
   ESP_LOGD(TAG, "clear irq status");
   s = sx126x_clear_irq_status(lora->ctx, C2LORARX_INTMASK);
   if (s) ESP_LOGE(TAG, "clear irq status");
-  DEBUG_SX126X_INFOS(lora->ctx);
 
   esp_err_t err = gpio_isr_handler_add(lora->intr_pin, gpio_rx_handler, (void*) lora);
   ESP_RETURN_ON_ERROR(err, TAG, "init GPIO ISR failed (%s)", esp_err_to_name(err));
