@@ -567,11 +567,9 @@ static int c2lora_console(int argc, char **argv) {
   case 7: // save
     C2LORA_save_config();
     break;  
-  case 8:
-    printf("transmitting last HAMdLNK reception...\n");
-    if (C2LORA_retransmit_last() == ESP_OK) {
-      printf("transmit done.\n");
-    } else {
+  case 8: // retransmit
+    printf("transmitting last reception...\n");
+    if (!C2LORA_retransmit_last() == ESP_OK) {
       printf("transmit failed.\n");
     }
     break;  
@@ -1189,6 +1187,11 @@ static esp_err_t board_gpio_init(void) {
 #if CONFIG_LOCAL_PTT_IOPIN != GPIO_NUM_NC
   gpio_set_direction(CONFIG_LOCAL_PTT_IOPIN, GPIO_MODE_INPUT);
   gpio_set_pull_mode(CONFIG_LOCAL_PTT_IOPIN, GPIO_PULLUP_ONLY);
+#endif
+
+#if (defined LED_Pin) && (LED_Pin != GPIO_NUM_NC)
+  gpio_set_level(LED_Pin, 0);
+  gpio_set_direction(LED_Pin, GPIO_MODE_OUTPUT);
 #endif
 
   ESP_RETURN_ON_ERROR(gpio_install_isr_service(ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_LEVEL2), TAG, "can't install GPIO ISR service");
