@@ -8,7 +8,8 @@
 
 esp_err_t localaudio_start(void);
 
-#define DVSTREAM_FLAG_KEEP_BUFFER     0x0001
+#define DVSTREAM_FLAG_KEEP_BUFFER     0x0001          // simple buffer will not freed after use
+#define DVSTREAM_FLAG_IS_CANNED       0x0002          // this 'stream' is from da recording / file; if empty: transmission stops.
 
 typedef void (*tfinished_stream_fct) (void *userdata);
 
@@ -25,6 +26,7 @@ typedef struct {
     tsimple_buffer  *	buf;
   };  
 } tdvstream;
+
 
 typedef void (*thandle_inputstream_funct) (tdvstream *dva, void *userdata);
 

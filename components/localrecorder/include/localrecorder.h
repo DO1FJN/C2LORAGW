@@ -23,11 +23,19 @@ typedef struct sRecorderHandle tRecorderHandle;
 
 esp_err_t create_record(tRecorderHandle **hnd, U8 codec_type, U16 frame_cnt, U16 frame_size, U16 steps_per_frame);
 
-void rewind_recording(tRecorderHandle *hnd);
+esp_err_t record_append_info(tRecorderHandle *hnd, const char *callsign, const char *recipient);
 
 void record_append_dvframe(tRecorderHandle *hnd, const void *dvdata, U16 frame_cnt);
 
+esp_err_t finish_record(tRecorderHandle *hnd);
+
+tRecorderHandle *get_last_record(void);
+
+void rewind_recording(tRecorderHandle *hnd);
+
 U8 record_get_codec_type(tRecorderHandle *hnd);
+
+const char *record_get_callsign(tRecorderHandle *hnd);
 
 tsimple_buffer *record_get_buffer(tRecorderHandle *hnd);
 
