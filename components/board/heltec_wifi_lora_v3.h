@@ -15,7 +15,7 @@ hardware GPIO defines for Heltec WiFi LoRa 32 V3 / V3.1
 #define ADC_INPUT_Pin           1
 
 #define BOARD_POWER_ON_Pin      VEXT_CTRL_Pin
-
+#define RECEIVING_INDICATOR_LED LED_Pin
 
 // we use an I²C bus, the only device onnected is an OLED monochrome display
 #define I2C_SDA_Pin             17
@@ -31,13 +31,13 @@ hardware GPIO defines for Heltec WiFi LoRa 32 V3 / V3.1
 #define OLED_Y_OFFSET           0
 
 // tbd (JP2 / JP3 attached hardware)
-#define AUDIO_I2S_WS_Pin        19
+#define AUDIO_I2S_WS_Pin        26
 #define AUDIO_I2S_DOUT_Pin      20
-#define AUDIO_I2S_BCLK_Pin      21      // MAX98357A connected to JP2 pins 16-18, VDD_5V and GND
+#define AUDIO_I2S_BCLK_Pin      19      // MAX98357A connected to JP2 pins 15,17,18, VDD_5V and GND
 
-#define CODEC_I2S_WS_Pin        34
-#define CODEC_I2S_DIN_Pin       35
-#define CODEC_I2S_BCLK_Pin      36      // INMP441 connected to JP2 pins 9-11, Vext and GND
+#define CODEC_I2S_WS_Pin        47
+#define CODEC_I2S_DIN_Pin       33
+#define CODEC_I2S_BCLK_Pin      34      // INMP441 connected to JP2 pins 11-13, Vext and GND
 
 
 // SX1262 LoRa GPIO connectivity and other defines:
