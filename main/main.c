@@ -517,7 +517,11 @@ static void set_c2lora_txpower(const char *arg) {
     printf("tx power out of bounds (-14 to 40dBm)\n");
     return;
   }
-  C2LORA_set_txpower(power_dBm);
+  if (C2LORA_set_txpower(power_dBm) == ESP_OK) {
+    printf("txpower set to %ddBm\n", power_dBm);
+  } else {
+    printf("txpower set fails\n");
+  }
 }
 
 
@@ -549,6 +553,10 @@ static int c2lora_console(int argc, char **argv) {
     set_c2lora_mode(argv[2]);
     break;
   case 3:   // txpower
+    if (argc == 2) {
+      int8_t txpwr = C2LORA_get_txpower();
+      printf("txpower = %ddBm\n", txpwr);
+    }
     if (argc != 3) break;
     set_c2lora_txpower(argv[2]);
     break;

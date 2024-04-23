@@ -131,7 +131,7 @@ bool C2LORA_is_header(bool last_was_header, uint8_t first_byte, int32_t interpkt
 
 esp_err_t C2LORA_set_standby(tLoraStream *lora, sx126x_standby_cfgs_t mode);
 
-esp_err_t C2LORA_set_tx_power(tLoraStream *lora, signed char pwr_dBm);
+signed char C2LORA_set_tx_power(tLoraStream *lora, signed char pwr_dBm);
 
 esp_err_t C2LORA_prepare_transmit(tLoraStream *lora, bool preamble_for_rt_speech);
 

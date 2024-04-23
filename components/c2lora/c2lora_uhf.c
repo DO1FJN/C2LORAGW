@@ -546,15 +546,19 @@ signed char C2LORA_get_txpower(void) {
 
 
 esp_err_t C2LORA_set_txpower(signed char power_dBm) {
+  signed char power_dBm_set;
   tLoraStream *lora = C2LORA_get_stream_4_transmit();
 #if (defined SX126X_PA_GAIN_DB) && (SX126X_PA_GAIN_DB > 0)
   power_dBm -= SX126X_PA_GAIN_DB;
 #endif
 #ifdef C2LORA_2ND_STREAM
-  C2LORA_set_tx_power(lora, power_dBm);
+  power_dBm_set = C2LORA_set_tx_power(lora, power_dBm);
+  if (power_dBm_set != -128) lora->tx_power_dBm = power_dBm_set;
   lora = (lora != &lora_stream)? &lora_stream: &lora_2nd_stream;  
 #endif
-  return C2LORA_set_tx_power(lora, power_dBm);
+  power_dBm_set = C2LORA_set_tx_power(lora, power_dBm);
+  if (power_dBm_set != -128) lora->tx_power_dBm = power_dBm_set;
+  return (power_dBm_set != -128)? ESP_OK: ESP_FAIL;
 }
 
 

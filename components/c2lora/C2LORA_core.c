@@ -270,7 +270,7 @@ esp_err_t C2LORA_set_standby(tLoraStream *lora, sx126x_standby_cfgs_t mode) {
 }
 
 
-esp_err_t C2LORA_set_tx_power(tLoraStream *lora, signed char pwr_dBm) {
+signed char C2LORA_set_tx_power(tLoraStream *lora, signed char pwr_dBm) {
   const int8_t  max_dBm_sel[]      = { 12, 15, 18, 21 };
   const uint8_t pa_duties_sx1268[] = { 0, 4, 2, 3, 4 };
   const uint8_t hp_maxsel_sx1268[] = { 3, 6, 3, 5, 7 };
@@ -303,7 +303,7 @@ esp_err_t C2LORA_set_tx_power(tLoraStream *lora, signed char pwr_dBm) {
 #endif  
   s = sx126x_set_tx_params(lora->ctx, pwr_dBm, SX126X_RAMP_800_US); // ~ 8µs BUSY // max-ramp 3400µs
   if (s) ESP_LOGE(TAG, "set TX parameter");
-  return s;
+  return (s)? -128: pwr_dBm;
 }
 
 
