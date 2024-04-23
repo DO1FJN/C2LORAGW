@@ -17,7 +17,7 @@ hardware GPIO defines for Heltec WiFi LoRa 32 V3 / V3.1
 #define BOARD_POWER_ON_Pin      VEXT_CTRL_Pin
 #define RECEIVING_INDICATOR_LED LED_Pin
 
-// we use an I²C bus, the only device onnected is an OLED monochrome display
+// we use an I²C bus, the only device connected is an OLED monochrome display
 #define I2C_SDA_Pin             17
 #define I2C_SCL_Pin             18
 
