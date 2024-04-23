@@ -317,7 +317,7 @@ int Check_Call(const char *Call, int Call_Length) {
   char zcnt = 0, ncnt = 0;
   unsigned int cnt;
   if (Call_Length < 5) return 0;
-  for (cnt=0; cnt<6; cnt++) {
+  for (cnt=0; (cnt < 6) && (*Call != 0); cnt++) {
     z = toupper(*Call++);
     if (z < ' ') return 0;
     if ((z >= '0')&&(z <= '9')) ncnt++;
