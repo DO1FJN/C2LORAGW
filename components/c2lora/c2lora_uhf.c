@@ -1359,16 +1359,13 @@ static inline esp_err_t c2lora_receive_funct(tLoraStream *lora, trtp_data * FWDr
           ESP_LOGE(TAG, "error get packet status");
         } else {
 #if (defined SX126X_LNA_RSSI_SHIFT) && (SX126X_LNA_RSSI_SHIFT > 0)
-          ESP_LOGD(TAG, "RX rssi %ddBm sig %ddBm, SNR:%ddBm, DVframes:%lu IRQmask:%04xh", 
-            rxpacket_status.rssi_pkt_in_dbm - SX126X_LNA_RSSI_SHIFT,
-            rxpacket_status.signal_rssi_pkt_in_dbm - SX126X_LNA_RSSI_SHIFT,
-            rxpacket_status.snr_pkt_in_db, lora->frame_cnt, irq_mask);
-#else
+          rxpacket_status.rssi_pkt_in_dbm -= SX126X_LNA_RSSI_SHIFT;
+          rxpacket_status.signal_rssi_pkt_in_dbm -= SX126X_LNA_RSSI_SHIFT;
+#endif
           ESP_LOGD(TAG, "RX rssi %ddBm sig %ddBm, SNR:%ddBm, DVframes:%lu IRQmask:%04xh", 
             rxpacket_status.rssi_pkt_in_dbm,
             rxpacket_status.signal_rssi_pkt_in_dbm,
             rxpacket_status.snr_pkt_in_db, lora->frame_cnt, irq_mask);
-#endif    
           C2LORA_ui_notify_rx_rssi(rxpacket_status.rssi_pkt_in_dbm, rxpacket_status.snr_pkt_in_db, rxpacket_status.signal_rssi_pkt_in_dbm);
         }
         //if (rxbuffer_status.pld_len_in_bytes > 0) {
